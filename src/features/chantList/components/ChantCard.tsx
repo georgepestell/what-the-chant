@@ -22,7 +22,7 @@ const ChantCard: React.FC<ChantCardProps> = ({ chant, isFavorite, onToggleFavori
                 boxSizing: 'border-box',
             }}
         >
-            <Box display="flex" justifyContent="space-between" alignItems="center" sx={{ position: 'relative' }}>
+            <Box display="flex" justifyContent="space-between" alignItems="flex-start" sx={{ position: 'relative' }}>
                 <Typography
                     variant="h6"
                     sx={{
@@ -32,7 +32,8 @@ const ChantCard: React.FC<ChantCardProps> = ({ chant, isFavorite, onToggleFavori
                         overflowWrap: 'break-word',
                         minWidth: 0,
                         flex: 1,
-                        mr: 1,
+                        pr: isLocked ? 0 : '34px', // Button width (32px) + 2px gap
+                        lineHeight: 1.4,
                     }}
                 >
                     {chant.title}
