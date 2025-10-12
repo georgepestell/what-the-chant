@@ -7,9 +7,10 @@ interface ChantCardProps {
     chant: Chant
     isFavorite: boolean
     onToggleFavorite: (chantId: number) => void
+    isLocked: boolean
 }
 
-const ChantCard: React.FC<ChantCardProps> = ({ chant, isFavorite, onToggleFavorite }) => {
+const ChantCard: React.FC<ChantCardProps> = ({ chant, isFavorite, onToggleFavorite, isLocked }) => {
     return (
         <Paper
             elevation={2}
@@ -36,21 +37,23 @@ const ChantCard: React.FC<ChantCardProps> = ({ chant, isFavorite, onToggleFavori
                 >
                     {chant.title}
                 </Typography>
-                <Button
-                    variant="contained"
-                    color={isFavorite ? 'secondary' : 'primary'}
-                    size="small"
-                    onClick={() => onToggleFavorite(chant.id)}
-                    sx={{
-                        minWidth: 'auto',
-                        padding: '4px',
-                        position: 'absolute',
-                        top: 0,
-                        right: 0,
-                    }}
-                >
-                    {isFavorite ? <Favorite fontSize="small" /> : <FavoriteBorder fontSize="small" />}
-                </Button>
+                {!isLocked && (
+                    <Button
+                        variant="contained"
+                        color={isFavorite ? 'secondary' : 'primary'}
+                        size="small"
+                        onClick={() => onToggleFavorite(chant.id)}
+                        sx={{
+                            minWidth: 'auto',
+                            padding: '4px',
+                            position: 'absolute',
+                            top: 0,
+                            right: 0,
+                        }}
+                    >
+                        {isFavorite ? <Favorite fontSize="small" /> : <FavoriteBorder fontSize="small" />}
+                    </Button>
+                )}
             </Box>
             <Box mt={1} display="flex" gap={1} flexWrap="wrap" alignItems="center">
                 {chant.categories.map((category: string) => (

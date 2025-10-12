@@ -96,6 +96,9 @@ const lightTheme = createTheme({
                 root: {
                     color: '#FFFFFF', // Default button text color for light theme
                 },
+                outlined: {
+                    color: '#d32f2f', // Primary text color for outlined variant
+                },
             },
         },
     },
@@ -196,6 +199,9 @@ const darkTheme = createTheme({
             styleOverrides: {
                 root: {
                     color: '#ffffff', // Default button text color for dark theme
+                },
+                outlined: {
+                    color: '#d32f2f', // Primary text color for outlined variant
                 },
             },
         },

@@ -9,9 +9,17 @@ interface ChantSectionProps {
     favoriteChants: number[]
     onToggleFavorite: (chantId: number) => void
     showEmptyMessage?: boolean
+    isLocked: boolean
 }
 
-const ChantSection: React.FC<ChantSectionProps> = ({ title, chants, favoriteChants, onToggleFavorite, showEmptyMessage = false }) => {
+const ChantSection: React.FC<ChantSectionProps> = ({
+    title,
+    chants,
+    favoriteChants,
+    onToggleFavorite,
+    showEmptyMessage = false,
+    isLocked = false,
+}) => {
     if (chants.length === 0 && !showEmptyMessage) {
         return null
     }
@@ -29,6 +37,7 @@ const ChantSection: React.FC<ChantSectionProps> = ({ title, chants, favoriteChan
                               chant={chant}
                               isFavorite={favoriteChants.includes(chant.id)}
                               onToggleFavorite={onToggleFavorite}
+                              isLocked={isLocked}
                           />
                       ))
                     : showEmptyMessage && (
