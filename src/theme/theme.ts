@@ -99,6 +99,9 @@ const lightTheme = createTheme({
                 outlined: {
                     color: '#d32f2f', // Primary text color for outlined variant
                 },
+                text: {
+                    color: '#000000', // Primary text color for outlined variant
+                },
             },
         },
     },
@@ -202,6 +205,9 @@ const darkTheme = createTheme({
                 },
                 outlined: {
                     color: '#d32f2f', // Primary text color for outlined variant
+                },
+                text: {
+                    color: '#ffffff', // Primary text color for outlined variant
                 },
             },
         },

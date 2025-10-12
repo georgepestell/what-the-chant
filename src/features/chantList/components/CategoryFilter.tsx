@@ -45,7 +45,7 @@ const CategoryFilter: React.FC<CategoryFilterProps> = ({ categories, selectedCat
             </Box>
             {categories.length > 4 && (
                 <Button
-                    style={{ color: '#000000' }}
+                    variant="text"
                     size="small"
                     onClick={() => setShowAll(!showAll)}
                     startIcon={showAll ? <ExpandLess /> : <ExpandMore />}

@@ -100,6 +100,7 @@ const ChantList: React.FC = () => {
                         favoriteChants={favoriteChants}
                         onToggleFavorite={handleToggleFavorite}
                         showEmptyMessage={true}
+                        isLocked={isLocked}
                     />
 
                     {/* Floating Search Button for Mobile */}
