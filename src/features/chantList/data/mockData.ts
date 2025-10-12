@@ -9,16 +9,20 @@ export const MOCK_CHANTS: Chant[] = [
     { id: 4, title: 'No War But Class War', categories: ['Stop The War'] },
     {
         id: 5,
-        title: 'Workers United Will Never Be Divided - A chant for solidarity and unity in the workplace struggle',
-        categories: ['Workers Rights'],
+        title: 'The People United Will Never Be Divided - A chant for solidarity and unity in the workplace struggle',
+        categories: ['Workers Rights', 'Fascism'],
     },
     {
         id: 6,
-        title: 'No Pasaran - They Shall Not Pass - The classic anti-fascist chant that echoes through history',
+        title: 'Siamo tutti antifascisti',
         categories: ['Fascism'],
     },
-    { id: 7, title: 'Tories Out, Tories Out, Tories Out!', categories: ['Tories'] },
-    { id: 8, title: 'The People United Will Never Be Defeated', categories: ['Workers Rights', 'SUTR'] },
+    {
+        id: 7,
+        title: "Build a bonfire, build a bonfire, put the [tories/tommy] at the top. Put the racists in the middle, and we'll burn the fucking lot!",
+        categories: ['Tories'],
+    },
+    { id: 8, title: 'The People, United. Will Never Be Defeated', categories: ['Workers Rights', 'SUTR'] },
     { id: 9, title: 'Stop the War, Stop the Killing', categories: ['Stop The War', 'Palestine'] },
-    { id: 10, title: 'No Justice, No Peace', categories: ['Palestine', 'Workers Rights'] },
+    { id: 10, title: 'No Justice, No Peace\nNo Racist Police', categories: ['Palestine', 'Workers Rights'] },
 ]
