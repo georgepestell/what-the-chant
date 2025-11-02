@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { Container, ThemeProvider, CssBaseline, Typography, useMediaQuery, Button } from '@mui/material'
 import { lightTheme, darkTheme } from './theme/theme'
 import ChantList from './features/chantList/ChantList'
+import ChantSubmission from './features/chantSubmission/ChantSubmission'
+import { CATEGORIES } from './features/chantList/data/mockData'
 
 function App() {
     const prefersDarkMode = useMediaQuery('(prefers-color-scheme: dark)')
@@ -44,6 +46,7 @@ function App() {
                     Find the chants for your next demo
                 </Typography>
                 <ChantList />
+                <ChantSubmission availableCategories={CATEGORIES} />
             </Container>
         </ThemeProvider>
     )
