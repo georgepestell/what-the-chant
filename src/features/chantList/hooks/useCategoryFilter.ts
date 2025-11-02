@@ -1,20 +1,13 @@
 import { useState } from 'react'
-import type { CategoryFilter } from '../types'
 
-export const useCategoryFilter = (initialCategories: CategoryFilter = ['All']) => {
-    const [selectedCategories, setSelectedCategories] = useState<CategoryFilter>(initialCategories)
+export const useCategoryFilter = (initialCategories: number[] = []) => {
+    const [selectedCategories, setSelectedCategories] = useState<number[]>(initialCategories)
 
-    const handleCategorySelect = (category: string) => {
-        if (category === 'All') {
-            setSelectedCategories(['All'])
-        } else {
-            setSelectedCategories((prev) => {
-                const newCategories = prev.includes(category)
-                    ? prev.filter((c) => c !== category)
-                    : [...prev.filter((c) => c !== 'All'), category]
-                return newCategories.length === 0 ? ['All'] : newCategories
-            })
-        }
+    const handleCategorySelect = (categoryId: number) => {
+        setSelectedCategories((prev) => {
+            const newCategories = prev.includes(categoryId) ? prev.filter((c) => c !== categoryId) : [...prev, categoryId]
+            return newCategories
+        })
     }
 
     return {

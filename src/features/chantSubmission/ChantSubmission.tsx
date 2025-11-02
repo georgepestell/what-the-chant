@@ -1,31 +1,21 @@
 import React, { useState } from 'react'
-import {
-    Paper,
-    TextField,
-    Button,
-    Typography,
-    Box,
-    Chip,
-    FormControl,
-    InputLabel,
-    Select,
-    MenuItem,
-    OutlinedInput,
-    Alert,
-    Snackbar,
-    Divider,
-} from '@mui/material'
+import { Paper, TextField, Button, Typography, Box, Chip, Alert, Snackbar, Divider } from '@mui/material'
 import { Add, Send } from '@mui/icons-material'
+import { useAuth } from '../../contexts/AuthContext'
+import { supabase } from '../../lib/supabase'
+import type { Category } from '../../App'
 
 interface ChantSubmissionProps {
-    availableCategories: string[]
+    availableCategories: Category[]
+    onChantSubmitted?: () => void
 }
 
-const ChantSubmission: React.FC<ChantSubmissionProps> = ({ availableCategories }) => {
+const ChantSubmission: React.FC<ChantSubmissionProps> = ({ availableCategories, onChantSubmitted }) => {
+    const { user, isAdmin } = useAuth()
     const [chantText, setChantText] = useState('')
     const [selectedCategories, setSelectedCategories] = useState<string[]>([])
     const [newCategory, setNewCategory] = useState('')
-    const [newCategories, setNewCategories] = useState<string[]>([])
+    const [localCategories, setLocalCategories] = useState<string[]>([]) // Categories added locally but not yet in DB
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [notification, setNotification] = useState<{
         open: boolean
@@ -37,20 +27,21 @@ const ChantSubmission: React.FC<ChantSubmissionProps> = ({ availableCategories }
         severity: 'success',
     })
 
-    const handleCategoryChange = (event: { target: { value: string | string[] } }) => {
-        const value = event.target.value
-        setSelectedCategories(typeof value === 'string' ? value.split(',') : value)
+    // Combine available categories from DB with locally added ones
+    const availableCategoryNames = availableCategories.map((cat) => cat.name)
+    const allCategories = [...availableCategoryNames, ...localCategories]
+
+    const handleCategoryToggle = (category: string) => {
+        setSelectedCategories((prev) => (prev.includes(category) ? prev.filter((cat) => cat !== category) : [...prev, category]))
     }
 
     const addNewCategory = () => {
-        if (newCategory.trim() && !newCategories.includes(newCategory.trim()) && !availableCategories.includes(newCategory.trim())) {
-            setNewCategories([...newCategories, newCategory.trim()])
+        const trimmed = newCategory.trim().toLowerCase()
+        if (trimmed && !allCategories.includes(trimmed)) {
+            // Add to local categories list (not selected by default)
+            setLocalCategories([...localCategories, trimmed])
             setNewCategory('')
         }
-    }
-
-    const removeNewCategory = (categoryToRemove: string) => {
-        setNewCategories(newCategories.filter((cat) => cat !== categoryToRemove))
     }
 
     const handleSubmit = async () => {
@@ -63,52 +54,115 @@ const ChantSubmission: React.FC<ChantSubmissionProps> = ({ availableCategories }
             return
         }
 
+        if (!user?.id) {
+            setNotification({
+                open: true,
+                message: 'You must be logged in to submit a chant',
+                severity: 'error',
+            })
+            return
+        }
+
         setIsSubmitting(true)
 
         try {
-            // Format the message for the existing Lambda endpoint
-            const message = `
-New Chant Submission:
+            if (isAdmin) {
+                // Admin flow: Insert directly to chants table
+                const existingCategories = selectedCategories.filter((cat) => availableCategoryNames.includes(cat))
+                const newCategories = selectedCategories.filter((cat) => !availableCategoryNames.includes(cat))
 
-📝 CHANT TEXT:
-${chantText.trim()}
+                // Step 1: Insert the chant and get its ID
+                const { data: chantData, error: chantError } = await supabase
+                    .from('chants')
+                    .insert({
+                        text: chantText.trim(),
+                    })
+                    .select('id')
+                    .single()
 
-🏷️ EXISTING CATEGORIES:
-${selectedCategories.length > 0 ? selectedCategories.join(', ') : 'None selected'}
+                if (chantError || !chantData) {
+                    throw chantError || new Error('Failed to create chant')
+                }
 
-🆕 NEW CATEGORIES:
-${newCategories.length > 0 ? newCategories.join(', ') : 'None added'}
+                const chantId = chantData.id
 
-⏰ SUBMITTED AT:
-${new Date().toLocaleString()}
-            `.trim()
+                // Step 2: Create any new categories
+                const newCategoryIds: number[] = []
+                if (newCategories.length > 0) {
+                    const { data: newCatData, error: newCatError } = await supabase
+                        .from('categories')
+                        .insert(newCategories.map((name) => ({ name })))
+                        .select('id')
 
-            const response = await fetch('https://cmuhiwgi05.execute-api.eu-north-1.amazonaws.com/api/feedback', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    name: 'What The Chant User',
-                    email: 'chant-submissions@whatthechant.app',
-                    message: message,
-                }),
-            })
+                    if (newCatError) {
+                        throw newCatError
+                    }
 
-            if (response.ok) {
+                    if (newCatData) {
+                        newCategoryIds.push(...newCatData.map((cat) => cat.id))
+                    }
+                }
+
+                // Step 3: Get IDs of existing categories from passed data
+                const existingCategoryIds = availableCategories.filter((cat) => existingCategories.includes(cat.name)).map((cat) => cat.id)
+
+                // Step 4: Link chant to categories
+                const allCategoryIds = [...existingCategoryIds, ...newCategoryIds]
+                if (allCategoryIds.length > 0) {
+                    const { error: linkError } = await supabase
+                        .from('chant_categories')
+                        .insert(allCategoryIds.map((category_id) => ({ chant_id: chantId, category_id })))
+
+                    if (linkError) {
+                        throw linkError
+                    }
+                }
+
                 setNotification({
                     open: true,
                     message: 'Chant submitted successfully!',
                     severity: 'success',
                 })
 
-                // Reset form
-                setChantText('')
-                setSelectedCategories([])
-                setNewCategories([])
+                // Notify parent to refresh chants
+                onChantSubmitted?.()
             } else {
-                throw new Error('Failed to submit chant')
+                // Non-admin flow: Submit to chant_submissions table
+                const existingCategories = selectedCategories.filter((cat) => availableCategoryNames.includes(cat))
+                const newCategories = selectedCategories.filter((cat) => !availableCategoryNames.includes(cat))
+
+                // Get IDs of existing categories
+                const existingCategoryIds = availableCategories.filter((cat) => existingCategories.includes(cat.name)).map((cat) => cat.id)
+
+                // Create JSON object with all submission data
+                const chantData = {
+                    text: chantText.trim(),
+                    existingCategoryIds,
+                    newCategoryNames: newCategories,
+                }
+
+                // Insert to chant_submissions
+                const { error: submissionError } = await supabase.from('chant_submissions').insert({
+                    user_id: user.id,
+                    chant: chantData,
+                    status: 'pending',
+                })
+
+                if (submissionError) {
+                    throw submissionError
+                }
+
+                setNotification({
+                    open: true,
+                    message: 'Chant submitted for review!',
+                    severity: 'success',
+                })
             }
+
+            // Reset form
+            setChantText('')
+            setSelectedCategories([])
+            setLocalCategories([]) // Clear local categories after submission
         } catch (error) {
             console.error('Error submitting chant:', error)
             setNotification({
@@ -134,9 +188,12 @@ ${new Date().toLocaleString()}
                 backgroundColor: 'background.paper',
             }}
         >
-            <Typography variant="h5" gutterBottom sx={{ fontFamily: 'BBH Sans Hegarty' }}>
-                Submit a New Chant
-            </Typography>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h5" sx={{ fontFamily: 'BBH Sans Hegarty' }}>
+                    Submit a New Chant
+                </Typography>
+                {user && <Chip label="Authenticated" color="success" size="small" variant="outlined" />}
+            </Box>
 
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
                 Help us grow our collection! Submit your chant ideas and we'll review them for inclusion.
@@ -153,43 +210,35 @@ ${new Date().toLocaleString()}
                 placeholder="Enter your chant here..."
                 value={chantText}
                 onChange={(e) => setChantText(e.target.value)}
+                required
                 sx={{ mb: 3 }}
             />
 
-            {/* Existing Categories Selection */}
-            <FormControl fullWidth sx={{ mb: 3 }}>
-                <InputLabel>Select Categories</InputLabel>
-                <Select
-                    multiple
-                    value={selectedCategories}
-                    onChange={handleCategoryChange}
-                    input={<OutlinedInput label="Select Categories" />}
-                    renderValue={(selected) => (
-                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                            {selected.map((value) => (
-                                <Chip key={value} label={value} size="small" />
-                            ))}
-                        </Box>
-                    )}
-                >
-                    {availableCategories
-                        .filter((cat) => cat !== 'All')
-                        .map((category) => (
-                            <MenuItem key={category} value={category}>
-                                {category}
-                            </MenuItem>
-                        ))}
-                </Select>
-            </FormControl>
+            {/* Categories Section */}
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                Select Categories (optional)
+            </Typography>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+                {allCategories.map((category) => (
+                    <Chip
+                        key={category.toLowerCase()}
+                        label={category.toLowerCase()}
+                        color={selectedCategories.includes(category.toLowerCase()) ? 'primary' : 'default'}
+                        onClick={() => handleCategoryToggle(category.toLowerCase())}
+                        clickable
+                    />
+                ))}
+            </Box>
 
-            {/* New Category Input */}
-            <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+            {/* New Category Input with Plus Button */}
+            <Box sx={{ display: 'flex', gap: 1, mb: 3 }}>
                 <TextField
                     fullWidth
+                    size="small"
                     label="Add New Category"
                     placeholder="Enter a new category..."
-                    value={newCategory}
-                    onChange={(e) => setNewCategory(e.target.value)}
+                    value={newCategory.toLowerCase()}
+                    onChange={(e) => setNewCategory(e.target.value.toLowerCase())}
                     onKeyDown={(e) => {
                         if (e.key === 'Enter') {
                             e.preventDefault()
@@ -197,36 +246,10 @@ ${new Date().toLocaleString()}
                         }
                     }}
                 />
-                <Button
-                    variant="outlined"
-                    onClick={addNewCategory}
-                    disabled={!newCategory.trim()}
-                    startIcon={<Add />}
-                    sx={{ minWidth: '120px' }}
-                >
-                    Add
+                <Button variant="contained" onClick={addNewCategory} disabled={!newCategory.trim()} sx={{ minWidth: '56px', px: 2 }}>
+                    <Add />
                 </Button>
             </Box>
-
-            {/* New Categories Display */}
-            {newCategories.length > 0 && (
-                <Box sx={{ mb: 3 }}>
-                    <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                        New Categories:
-                    </Typography>
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                        {newCategories.map((category) => (
-                            <Chip
-                                key={category}
-                                label={category}
-                                onDelete={() => removeNewCategory(category)}
-                                color="primary"
-                                variant="outlined"
-                            />
-                        ))}
-                    </Box>
-                </Box>
-            )}
 
             {/* Submit Button */}
             <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>

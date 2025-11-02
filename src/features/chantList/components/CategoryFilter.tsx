@@ -2,10 +2,15 @@ import React, { useState } from 'react'
 import { Chip, Box, Button } from '@mui/material'
 import { ExpandMore, ExpandLess } from '@mui/icons-material'
 
+interface Category {
+    id: number
+    name: string
+}
+
 interface CategoryFilterProps {
-    categories: string[]
-    selectedCategories: string[]
-    onCategorySelect: (category: string) => void
+    categories: Category[]
+    selectedCategories: number[]
+    onCategorySelect: (categoryId: number) => void
 }
 
 const CategoryFilter: React.FC<CategoryFilterProps> = ({ categories, selectedCategories, onCategorySelect }) => {
@@ -13,8 +18,8 @@ const CategoryFilter: React.FC<CategoryFilterProps> = ({ categories, selectedCat
 
     // Sort categories: selected ones first, then alphabetically
     const sortedCategories = React.useMemo(() => {
-        const selected = categories.filter((cat) => selectedCategories.includes(cat))
-        const unselected = categories.filter((cat) => !selectedCategories.includes(cat)).sort()
+        const selected = categories.filter((cat) => selectedCategories.includes(cat.id))
+        const unselected = categories.filter((cat) => !selectedCategories.includes(cat.id)).sort((a, b) => a.name.localeCompare(b.name))
         return [...selected, ...unselected]
     }, [categories, selectedCategories])
 
@@ -36,10 +41,10 @@ const CategoryFilter: React.FC<CategoryFilterProps> = ({ categories, selectedCat
             >
                 {displayedCategories.map((category) => (
                     <Chip
-                        key={category}
-                        label={category}
-                        color={selectedCategories.includes(category) ? 'primary' : 'default'}
-                        onClick={() => onCategorySelect(category)}
+                        key={category.id}
+                        label={category.name}
+                        color={selectedCategories.includes(category.id) ? 'primary' : 'default'}
+                        onClick={() => onCategorySelect(category.id)}
                     />
                 ))}
             </Box>

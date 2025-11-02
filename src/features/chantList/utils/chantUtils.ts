@@ -1,13 +1,5 @@
-import type { Chant, CategoryFilter } from '../types'
-
-export const filterChantsByCategory = (chants: Chant[], selectedCategories: CategoryFilter): Chant[] => {
-    if (selectedCategories.includes('All') || selectedCategories.length === 0) {
-        return chants
-    }
-    return chants.filter((chant) => chant.categories.some((category) => selectedCategories.includes(category)))
-}
-
-export const getFavoriteChants = (chants: Chant[], favoriteIds: number[]): Chant[] => {
+// Get favorite chants by id
+export const getFavoriteChants = (chants: { id: number; text: string }[], favoriteIds: number[]): { id: number; text: string }[] => {
     return chants.filter((chant) => favoriteIds.includes(chant.id))
 }
 
@@ -28,14 +20,10 @@ export const fuzzySearch = (text: string, searchTerm: string): boolean => {
             searchIndex++
         }
     }
-
     return searchIndex === searchLower.length
 }
 
-export const filterChantsBySearch = (chants: Chant[], searchTerm: string): Chant[] => {
+export const filterChantsBySearch = (chants: { id: number; text: string }[], searchTerm: string): { id: number; text: string }[] => {
     if (!searchTerm.trim()) return chants
-
-    return chants.filter(
-        (chant) => fuzzySearch(chant.title, searchTerm) || chant.categories.some((category) => fuzzySearch(category, searchTerm)),
-    )
+    return chants.filter((chant) => fuzzySearch(chant.text, searchTerm))
 }

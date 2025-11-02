@@ -1,6 +1,6 @@
 export interface Chant {
     id: number
-    title: string
+    text: string
     categories: string[]
 }
 

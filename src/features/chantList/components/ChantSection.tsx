@@ -1,15 +1,17 @@
 import React from 'react'
 import { Box, Typography } from '@mui/material'
 import ChantCard from './ChantCard'
-import type { Chant } from '../types'
 
 interface ChantSectionProps {
     title: string
-    chants: Chant[]
+    chants: { id: number; text: string; categories?: string[] }[]
     favoriteChants: number[]
     onToggleFavorite: (chantId: number) => void
+    onDelete?: (chantId: number) => void
+    onEdit?: (chantId: number) => void
     showEmptyMessage?: boolean
     isLocked: boolean
+    isAdmin?: boolean
 }
 
 const ChantSection: React.FC<ChantSectionProps> = ({
@@ -17,8 +19,11 @@ const ChantSection: React.FC<ChantSectionProps> = ({
     chants,
     favoriteChants,
     onToggleFavorite,
+    onDelete,
+    onEdit,
     showEmptyMessage = false,
     isLocked = false,
+    isAdmin = false,
 }) => {
     if (chants.length === 0 && !showEmptyMessage) {
         return null
@@ -37,7 +42,10 @@ const ChantSection: React.FC<ChantSectionProps> = ({
                               chant={chant}
                               isFavorite={favoriteChants.includes(chant.id)}
                               onToggleFavorite={onToggleFavorite}
+                              onDelete={onDelete}
+                              onEdit={onEdit}
                               isLocked={isLocked}
+                              isAdmin={isAdmin}
                           />
                       ))
                     : showEmptyMessage && (

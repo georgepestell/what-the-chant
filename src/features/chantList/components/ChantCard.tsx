@@ -1,16 +1,18 @@
 import React from 'react'
-import { Paper, Box, Typography, Button, Chip } from '@mui/material'
-import { Favorite, FavoriteBorder } from '@mui/icons-material'
-import type { Chant } from '../types'
+import { Paper, Box, Typography, Button, Chip, IconButton } from '@mui/material'
+import { Favorite, FavoriteBorder, Delete, Edit } from '@mui/icons-material'
 
 interface ChantCardProps {
-    chant: Chant
+    chant: { id: number; text: string; categories?: string[] }
     isFavorite: boolean
     onToggleFavorite: (chantId: number) => void
+    onDelete?: (chantId: number) => void
+    onEdit?: (chantId: number) => void
     isLocked: boolean
+    isAdmin?: boolean
 }
 
-const ChantCard: React.FC<ChantCardProps> = ({ chant, isFavorite, onToggleFavorite, isLocked }) => {
+const ChantCard: React.FC<ChantCardProps> = ({ chant, isFavorite, onToggleFavorite, onDelete, onEdit, isLocked, isAdmin }) => {
     return (
         <Paper
             elevation={2}
@@ -27,40 +29,65 @@ const ChantCard: React.FC<ChantCardProps> = ({ chant, isFavorite, onToggleFavori
                     variant="h6"
                     sx={{
                         textAlign: 'left',
-                        whiteSpace: 'normal',
+                        whiteSpace: 'pre-wrap',
                         wordBreak: 'break-word',
                         overflowWrap: 'break-word',
                         minWidth: 0,
                         flex: 1,
-                        pr: isLocked ? 0 : '34px', // Button width (32px) + 2px gap
+                        pr: isLocked ? 0 : isAdmin ? '118px' : '34px', // Adjust for edit + delete + favorite buttons if admin
                         lineHeight: 1.4,
                     }}
                 >
-                    {chant.title}
+                    {chant.text}
                 </Typography>
                 {!isLocked && (
-                    <Button
-                        variant="contained"
-                        color={isFavorite ? 'secondary' : 'primary'}
-                        size="small"
-                        onClick={() => onToggleFavorite(chant.id)}
-                        sx={{
-                            minWidth: 'auto',
-                            padding: '4px',
-                            position: 'absolute',
-                            top: 0,
-                            right: 0,
-                        }}
-                    >
-                        {isFavorite ? <Favorite fontSize="small" /> : <FavoriteBorder fontSize="small" />}
-                    </Button>
+                    <Box sx={{ position: 'absolute', top: 0, right: 0, display: 'flex', gap: 0.5 }}>
+                        {isAdmin && onEdit && (
+                            <IconButton
+                                color="primary"
+                                size="small"
+                                onClick={() => onEdit(chant.id)}
+                                sx={{
+                                    padding: '4px',
+                                }}
+                            >
+                                <Edit fontSize="small" />
+                            </IconButton>
+                        )}
+                        {isAdmin && onDelete && (
+                            <IconButton
+                                color="error"
+                                size="small"
+                                onClick={() => onDelete(chant.id)}
+                                sx={{
+                                    padding: '4px',
+                                }}
+                            >
+                                <Delete fontSize="small" />
+                            </IconButton>
+                        )}
+                        <Button
+                            variant="contained"
+                            color={isFavorite ? 'secondary' : 'primary'}
+                            size="small"
+                            onClick={() => onToggleFavorite(chant.id)}
+                            sx={{
+                                minWidth: 'auto',
+                                padding: '4px',
+                            }}
+                        >
+                            {isFavorite ? <Favorite fontSize="small" /> : <FavoriteBorder fontSize="small" />}
+                        </Button>
+                    </Box>
                 )}
             </Box>
-            <Box mt={1} display="flex" gap={1} flexWrap="wrap" alignItems="center">
-                {chant.categories.map((category: string) => (
-                    <Chip key={category} label={category} size="small" />
-                ))}
-            </Box>
+            {chant.categories && chant.categories.length > 0 && (
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 1 }}>
+                    {chant.categories.map((category) => (
+                        <Chip key={category} label={category} size="small" variant="outlined" />
+                    ))}
+                </Box>
+            )}
         </Paper>
     )
 }
