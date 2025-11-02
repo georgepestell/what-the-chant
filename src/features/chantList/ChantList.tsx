@@ -135,6 +135,10 @@ const ChantList: React.FC<ChantListProps> = ({ categories, onCategoriesChange })
 
     // Handle delete chant
     const handleDeleteChant = async (chantId: number) => {
+        if (!confirm('Are you sure you want to delete this chant? This action cannot be undone.')) {
+            return
+        }
+
         const { error } = await supabase.from('chants').delete().eq('id', chantId)
         if (error) {
             console.error('Error deleting chant:', error)
