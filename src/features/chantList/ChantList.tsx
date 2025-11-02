@@ -182,11 +182,22 @@ const ChantList: React.FC<ChantListProps> = ({ categories, onCategoriesChange })
             // Create new categories and get their IDs
             const newCategoryIds: number[] = []
             for (const categoryName of newCategories) {
-                const { data, error } = await supabase.from('categories').insert({ name: categoryName.toLowerCase() }).select('id').single()
+                const lowerCaseName = categoryName.toLowerCase()
 
-                if (error) throw error
-                if (data) {
-                    newCategoryIds.push(data.id)
+                // Check if category already exists
+                const { data: existingCategory } = await supabase.from('categories').select('id').eq('name', lowerCaseName).single()
+
+                if (existingCategory) {
+                    // Use existing category
+                    newCategoryIds.push(existingCategory.id)
+                } else {
+                    // Create new category
+                    const { data, error } = await supabase.from('categories').insert({ name: lowerCaseName }).select('id').single()
+
+                    if (error) throw error
+                    if (data) {
+                        newCategoryIds.push(data.id)
+                    }
                 }
             }
 
@@ -221,24 +232,26 @@ const ChantList: React.FC<ChantListProps> = ({ categories, onCategoriesChange })
             })
 
             // Update local state for chant categories
-            setChantCategories((prevCC) => {
-                const updated = [
-                    ...prevCC.filter((cc) => cc.chant_id !== chantId),
-                    ...allCategoryIds.map((category_id, index) => ({ id: now + index, chant_id: chantId, category_id })),
-                ]
-                // Update cache with timestamps
-                const cachedCategoriesStr = localStorage.getItem('chantCategories')
-                const cachedCategories: CachedChantCategory[] = cachedCategoriesStr ? JSON.parse(cachedCategoriesStr) : []
-                const updatedCache = [
-                    ...cachedCategories.filter((cc) => cc.chant_id !== chantId),
-                    ...allCategoryIds.map((category_id, index) => ({ id: now + index, chant_id: chantId, category_id, cachedAt: now })),
-                ]
-                localStorage.setItem('chantCategories', JSON.stringify(updatedCache))
-                return updated
-            })
+            const newChantCategories = [
+                ...chantCategories.filter((cc) => cc.chant_id !== chantId),
+                ...allCategoryIds.map((category_id, index) => ({ id: now + index, chant_id: chantId, category_id })),
+            ]
+            console.log('Updating chantCategories state to:', newChantCategories)
+            setChantCategories(newChantCategories)
+
+            // Update cache with timestamps
+            const cachedCategoriesStr = localStorage.getItem('chantCategories')
+            const cachedCategories: CachedChantCategory[] = cachedCategoriesStr ? JSON.parse(cachedCategoriesStr) : []
+            const updatedCache = [
+                ...cachedCategories.filter((cc) => cc.chant_id !== chantId),
+                ...allCategoryIds.map((category_id, index) => ({ id: now + index, chant_id: chantId, category_id, cachedAt: now })),
+            ]
+            console.log('Updating localStorage chantCategories to:', updatedCache)
+            localStorage.setItem('chantCategories', JSON.stringify(updatedCache))
 
             // Refresh categories from parent if new ones were created
             if (newCategories.length > 0) {
+                console.log('Refreshing parent categories')
                 onCategoriesChange?.()
             }
 
