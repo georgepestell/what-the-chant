@@ -1,15 +1,17 @@
 import './App.css'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom'
-import { Container, ThemeProvider, CssBaseline, useMediaQuery, Button, Box, Chip, Tabs, Tab } from '@mui/material'
+import { Container, ThemeProvider, CssBaseline, useMediaQuery, Button, Box, Chip, Tabs, Tab, CircularProgress } from '@mui/material'
 import { lightTheme, darkTheme } from './theme/theme'
 import { useAuth } from './contexts/AuthContext'
 import { UserProfile } from './features/auth/UserProfile'
 import Home from './pages/Home'
-import ChantAdmin from './pages/ChantAdmin'
-import CategoryAdmin from './pages/CategoryAdmin'
 import { supabase } from './lib/supabase'
+
+// Lazy load admin-only pages
+const ChantAdmin = lazy(() => import('./pages/ChantAdmin'))
+const CategoryAdmin = lazy(() => import('./pages/CategoryAdmin'))
 
 export type Category = { id: number; name: string }
 
@@ -66,6 +68,19 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, toggleTheme, isAdmi
     const location = useLocation()
     const currentTab = location.pathname === '/submissions' ? 1 : location.pathname === '/categories' ? 2 : 0
 
+    // Preload admin components in the background when user is admin
+    useEffect(() => {
+        if (isAdmin) {
+            // Preload components after a short delay to not block initial render
+            const timer = setTimeout(() => {
+                import('./pages/ChantAdmin')
+                import('./pages/CategoryAdmin')
+            }, 1000)
+
+            return () => clearTimeout(timer)
+        }
+    }, [isAdmin])
+
     return (
         <>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 2 }}>
@@ -89,9 +104,9 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, toggleTheme, isAdmi
             )}
 
             <Container
-                maxWidth={false}
+                maxWidth="xl"
                 sx={{
-                    maxWidth: '900px',
+                    minHeight: '90vh',
                     width: '100%',
                     display: 'flex',
                     flexDirection: 'column',
@@ -106,17 +121,35 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, toggleTheme, isAdmi
                     color: (theme) => theme.palette.text.primary,
                 }}
             >
-                <Routes>
-                    <Route path="/" element={<Home key={refreshKey} categories={categories} onChantSubmitted={handleChantSubmitted} />} />
-                    <Route
-                        path="/submissions"
-                        element={<ChantAdmin categories={categories} onCategoriesChanged={handleChantSubmitted} />}
-                    />
-                    <Route
-                        path="/categories"
-                        element={<CategoryAdmin categories={categories} onCategoriesChanged={handleChantSubmitted} />}
-                    />
-                </Routes>
+                <Suspense
+                    fallback={
+                        <Box
+                            sx={{
+                                display: 'flex',
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                                minHeight: '300px',
+                            }}
+                        >
+                            <CircularProgress />
+                        </Box>
+                    }
+                >
+                    <Routes>
+                        <Route
+                            path="/"
+                            element={<Home key={refreshKey} categories={categories} onChantSubmitted={handleChantSubmitted} />}
+                        />
+                        <Route
+                            path="/submissions"
+                            element={<ChantAdmin categories={categories} onCategoriesChanged={handleChantSubmitted} />}
+                        />
+                        <Route
+                            path="/categories"
+                            element={<CategoryAdmin categories={categories} onCategoriesChanged={handleChantSubmitted} />}
+                        />
+                    </Routes>
+                </Suspense>
             </Container>
         </>
     )

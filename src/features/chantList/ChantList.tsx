@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { Box, Divider, useTheme, useMediaQuery } from '@mui/material'
 import CategoryFilter from './components/CategoryFilter'
 import SearchBar from './components/SearchBar'
@@ -16,11 +16,18 @@ import { useAuth } from '../../contexts/AuthContext'
 import type { Category } from '../../App'
 
 // Types for Supabase data
-type Chant = { id: number; text: string }
+type Chant = { id: number; text: string; updated_at: string }
 type ChantCategory = { id: number; chant_id: number; category_id: number }
 type ChantWithCategories = Chant & { categories: string[] }
 type CachedChant = Chant & { cachedAt: number }
 type CachedChantCategory = ChantCategory & { cachedAt: number }
+
+// Enhanced cache structure with metadata
+interface CacheMetadata {
+    lastSync: number
+    chants: CachedChant[]
+    chantCategories: CachedChantCategory[]
+}
 
 // Cache expiry time in milliseconds (e.g., 5 minutes)
 const CACHE_EXPIRY_MS = 30 * 60 * 1000
@@ -45,124 +52,222 @@ const ChantList: React.FC<ChantListProps> = ({ categories, onCategoriesChange })
     const [chantCategories, setChantCategories] = useState<ChantCategory[]>([])
     const [editDialogOpen, setEditDialogOpen] = useState(false)
     const [editingChantId, setEditingChantId] = useState<number | null>(null)
+    const [isLoading, setIsLoading] = useState(true)
 
+    // Guard to prevent duplicate fetches (React StrictMode causes double mounting in dev)
+    const fetchGuard = useRef(false)
+
+    // Helper function for cache updates
+    const updateLocalCache = useCallback((cache: CacheMetadata) => {
+        const now = Date.now()
+        const updatedCache = { ...cache, lastSync: now }
+        localStorage.setItem('chantCache', JSON.stringify(updatedCache))
+        return updatedCache
+    }, [])
+
+    // Initial data fetch and real-time setup
     useEffect(() => {
-        const fetchData = async () => {
+        // Move handleRealtimeChantUpdate inside useEffect to prevent recreating subscription
+        const handleRealtimeChantUpdate = async (payload: any) => {
+            const now = Date.now()
+            console.log('Real-time chant update:', payload)
+
+            if (payload.eventType === 'INSERT') {
+                const newChant: Chant = payload.new
+                setChants((prev) => [...prev, newChant])
+
+                // Fetch categories for new chant
+                const { data: newChantCategories } = await supabase.from('chant_categories').select('*').eq('chant_id', newChant.id)
+
+                if (newChantCategories) {
+                    setChantCategories((prev) => [...prev, ...newChantCategories])
+                }
+
+                // Update cache
+                const cacheStr = localStorage.getItem('chantCache')
+                const cache: CacheMetadata = cacheStr ? JSON.parse(cacheStr) : { lastSync: 0, chants: [], chantCategories: [] }
+                cache.chants.push({ ...newChant, cachedAt: now })
+                if (newChantCategories) {
+                    cache.chantCategories.push(...newChantCategories.map((cc) => ({ ...cc, cachedAt: now })))
+                }
+                updateLocalCache(cache)
+            } else if (payload.eventType === 'UPDATE') {
+                const updatedChant: Chant = payload.new
+                setChants((prev) => prev.map((c) => (c.id === updatedChant.id ? updatedChant : c)))
+
+                // Fetch updated categories for this chant
+                const { data: updatedChantCategories } = await supabase.from('chant_categories').select('*').eq('chant_id', updatedChant.id)
+
+                // Update chant categories (remove old ones for this chant, add new ones)
+                setChantCategories((prev) => [...prev.filter((cc) => cc.chant_id !== updatedChant.id), ...(updatedChantCategories || [])])
+
+                // Update cache
+                const cacheStr = localStorage.getItem('chantCache')
+                const cache: CacheMetadata = cacheStr ? JSON.parse(cacheStr) : { lastSync: 0, chants: [], chantCategories: [] }
+                cache.chants = cache.chants.map((c) => (c.id === updatedChant.id ? { ...updatedChant, cachedAt: now } : c))
+                cache.chantCategories = [
+                    ...cache.chantCategories.filter((cc) => cc.chant_id !== updatedChant.id),
+                    ...(updatedChantCategories || []).map((cc) => ({ ...cc, cachedAt: now })),
+                ]
+                updateLocalCache(cache)
+            } else if (payload.eventType === 'DELETE') {
+                const deletedChantId = payload.old.id
+                setChants((prev) => prev.filter((c) => c.id !== deletedChantId))
+                setChantCategories((prev) => prev.filter((cc) => cc.chant_id !== deletedChantId))
+
+                // Update cache
+                const cacheStr = localStorage.getItem('chantCache')
+                const cache: CacheMetadata = cacheStr ? JSON.parse(cacheStr) : { lastSync: 0, chants: [], chantCategories: [] }
+                cache.chants = cache.chants.filter((c) => c.id !== deletedChantId)
+                cache.chantCategories = cache.chantCategories.filter((cc) => cc.chant_id !== deletedChantId)
+                updateLocalCache(cache)
+            }
+        }
+
+        const fetchIncrementalData = async () => {
+            // Prevent duplicate fetches (React StrictMode double mounting)
+            if (fetchGuard.current) {
+                console.log('🛑 Fetch already in progress, skipping duplicate call')
+                return
+            }
+
+            fetchGuard.current = true
+            console.log('🚀 Starting initial chant fetch')
+
             try {
                 const now = Date.now()
 
-                // Load cached data from localStorage
-                const cachedChantsStr = localStorage.getItem('chants')
-                const cachedChantCategoriesStr = localStorage.getItem('chantCategories')
+                // Load cache metadata
+                const cacheStr = localStorage.getItem('chantCache')
+                const cache: CacheMetadata = cacheStr
+                    ? JSON.parse(cacheStr)
+                    : {
+                          lastSync: 0,
+                          chants: [],
+                          chantCategories: [],
+                      }
 
-                const cachedChants: CachedChant[] = cachedChantsStr ? JSON.parse(cachedChantsStr) : []
-                const cachedChantCategories: CachedChantCategory[] = cachedChantCategoriesStr ? JSON.parse(cachedChantCategoriesStr) : []
+                // Filter out expired cached items
+                const validChants = cache.chants.filter((chant) => now - chant.cachedAt < CACHE_EXPIRY_MS)
+                const validChantCategories = cache.chantCategories.filter((cc) => now - cc.cachedAt < CACHE_EXPIRY_MS)
 
-                // Filter out expired chants
-                const validChants = cachedChants.filter((chant) => now - chant.cachedAt < CACHE_EXPIRY_MS)
-                const expiredChants = cachedChants.filter((chant) => now - chant.cachedAt >= CACHE_EXPIRY_MS)
+                // Get last sync time for incremental updates
+                const lastSyncDate = new Date(cache.lastSync).toISOString()
 
-                // Get IDs of expired chants
-                const expiredChantIds = new Set(expiredChants.map((c) => c.id))
-
-                // Filter out chant_categories for expired chants
-                const validChantCategories = cachedChantCategories.filter((cc) => !expiredChantIds.has(cc.chant_id))
-
-                // Fetch fresh data for expired chants
-                let refetchedChants: Chant[] = []
-                let refetchedChantCategories: ChantCategory[] = []
-
-                if (expiredChantIds.size > 0) {
-                    const { data: chantsData } = await supabase.from('chants').select('*').in('id', Array.from(expiredChantIds))
-
-                    refetchedChants = chantsData || []
-
-                    if (refetchedChants.length > 0) {
-                        const refetchedChantIds = refetchedChants.map((c) => c.id)
-                        const { data: categoriesData } = await supabase
-                            .from('chant_categories')
-                            .select('*')
-                            .in('chant_id', refetchedChantIds)
-                        refetchedChantCategories = categoriesData || []
-                    }
-                }
-
-                // Fetch any new chants (with ID greater than max cached ID)
-                const maxChantId = cachedChants.length > 0 ? Math.max(...cachedChants.map((c) => c.id)) : 0
-                const { data: newChantsData } = await supabase
+                // Fetch only chants updated since last sync
+                const { data: updatedChants } = await supabase
                     .from('chants')
                     .select('*')
-                    .gt('id', maxChantId)
-                    .order('id', { ascending: true })
+                    .gte('updated_at', lastSyncDate)
+                    .order('updated_at', { ascending: true })
 
-                let newChantCategories: ChantCategory[] = []
-                if (newChantsData && newChantsData.length > 0) {
-                    const newChantIds = newChantsData.map((c) => c.id)
-                    const { data: categoriesData } = await supabase.from('chant_categories').select('*').in('chant_id', newChantIds)
-                    newChantCategories = categoriesData || []
+                const updatedChantIds = updatedChants?.map((c) => c.id) || []
+
+                // Fetch categories for updated chants
+                let updatedChantCategories: ChantCategory[] = []
+                if (updatedChantIds.length > 0) {
+                    const { data: categoriesData } = await supabase.from('chant_categories').select('*').in('chant_id', updatedChantIds)
+                    updatedChantCategories = categoriesData || []
                 }
 
-                // Add timestamps to newly fetched data
-                const timestampedRefetched: CachedChant[] = refetchedChants.map((chant) => ({ ...chant, cachedAt: now }))
-                const timestampedNew: CachedChant[] = (newChantsData || []).map((chant) => ({ ...chant, cachedAt: now }))
-                const timestampedRefetchedCategories: CachedChantCategory[] = refetchedChantCategories.map((cc) => ({
+                // Merge data: Keep valid cache + add/update new data
+                const chantMap = new Map(validChants.map((c) => [c.id, c]))
+                const updatedChantsWithCache: CachedChant[] = (updatedChants || []).map((chant) => ({
+                    ...chant,
+                    cachedAt: now,
+                }))
+
+                // Update map with new/updated chants
+                updatedChantsWithCache.forEach((chant) => {
+                    chantMap.set(chant.id, chant)
+                })
+
+                // Remove categories for updated chants and add new ones
+                const updatedChantIdSet = new Set(updatedChantIds)
+                const filteredValidCategories = validChantCategories.filter((cc) => !updatedChantIdSet.has(cc.chant_id))
+                const newCategoriesWithCache: CachedChantCategory[] = updatedChantCategories.map((cc) => ({
                     ...cc,
                     cachedAt: now,
                 }))
-                const timestampedNewCategories: CachedChantCategory[] = newChantCategories.map((cc) => ({ ...cc, cachedAt: now }))
 
-                // Merge all data
-                const allCachedChants = [...validChants, ...timestampedRefetched, ...timestampedNew]
-                const allCachedChantCategories = [...validChantCategories, ...timestampedRefetchedCategories, ...timestampedNewCategories]
-
-                // Remove timestamps for state (keep clean data)
-                const allChants: Chant[] = allCachedChants.map(({ cachedAt: _cachedAt, ...chant }) => chant)
-                const allChantCategories: ChantCategory[] = allCachedChantCategories.map(({ cachedAt: _cachedAt, ...cc }) => cc)
+                const finalChants = Array.from(chantMap.values())
+                const finalChantCategories = [...filteredValidCategories, ...newCategoriesWithCache]
 
                 // Update state
-                setChants(allChants)
-                setChantCategories(allChantCategories)
+                const cleanChants: Chant[] = finalChants.map(({ cachedAt, ...chant }) => chant)
+                const cleanChantCategories: ChantCategory[] = finalChantCategories.map(({ cachedAt, ...cc }) => cc)
 
-                // Update localStorage with timestamped data
-                localStorage.setItem('chants', JSON.stringify(allCachedChants))
-                localStorage.setItem('chantCategories', JSON.stringify(allCachedChantCategories))
+                setChants(cleanChants)
+                setChantCategories(cleanChantCategories)
+
+                // Update cache
+                const updatedCache: CacheMetadata = {
+                    lastSync: now,
+                    chants: finalChants,
+                    chantCategories: finalChantCategories,
+                }
+                localStorage.setItem('chantCache', JSON.stringify(updatedCache))
             } catch (error) {
                 console.error('Error fetching chants:', error)
+            } finally {
+                setIsLoading(false)
+                fetchGuard.current = false
+                console.log('✅ Initial chant fetch completed')
             }
         }
-        fetchData()
-    }, [])
 
-    // Handle delete chant
+        // Set up real-time subscription
+        const chantsSubscription = supabase
+            .channel('chants-realtime')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'chants' }, handleRealtimeChantUpdate)
+            .subscribe()
+
+        // Initial fetch
+        fetchIncrementalData()
+
+        // Cleanup subscription on unmount
+        return () => {
+            supabase.removeChannel(chantsSubscription)
+        }
+    }, [updateLocalCache])
+
+    // Handle delete chant with optimistic updates
     const handleDeleteChant = async (chantId: number) => {
         if (!confirm('Are you sure you want to delete this chant? This action cannot be undone.')) {
             return
         }
 
-        const { error } = await supabase.from('chants').delete().eq('id', chantId)
-        if (error) {
+        // Store original data for potential rollback
+        const originalChant = chants.find((c) => c.id === chantId)
+        const originalCategories = chantCategories.filter((cc) => cc.chant_id === chantId)
+
+        // Optimistic update - remove from UI immediately
+        setChants((prev) => prev.filter((c) => c.id !== chantId))
+        setChantCategories((prev) => prev.filter((cc) => cc.chant_id !== chantId))
+
+        try {
+            const { error } = await supabase.from('chants').delete().eq('id', chantId)
+            if (error) throw error
+
+            // Update cache
+            const cacheStr = localStorage.getItem('chantCache')
+            const cache: CacheMetadata = cacheStr ? JSON.parse(cacheStr) : { lastSync: 0, chants: [], chantCategories: [] }
+
+            cache.chants = cache.chants.filter((c) => c.id !== chantId)
+            cache.chantCategories = cache.chantCategories.filter((cc) => cc.chant_id !== chantId)
+            cache.lastSync = Date.now()
+
+            localStorage.setItem('chantCache', JSON.stringify(cache))
+        } catch (error) {
             console.error('Error deleting chant:', error)
-            return
+
+            // Rollback optimistic update on error
+            if (originalChant) {
+                setChants((prev) => [...prev, originalChant])
+                setChantCategories((prev) => [...prev, ...originalCategories])
+            }
+            alert('Failed to delete chant. Please try again.')
         }
-        // Update local state and cache to remove the deleted chant
-        setChants((prevChants) => {
-            const updated = prevChants.filter((chant) => chant.id !== chantId)
-            // Update cache with timestamps
-            const cachedChantsStr = localStorage.getItem('chants')
-            const cachedChants: CachedChant[] = cachedChantsStr ? JSON.parse(cachedChantsStr) : []
-            const updatedCache = cachedChants.filter((chant) => chant.id !== chantId)
-            localStorage.setItem('chants', JSON.stringify(updatedCache))
-            return updated
-        })
-        setChantCategories((prevCC) => {
-            const updated = prevCC.filter((cc) => cc.chant_id !== chantId)
-            // Update cache with timestamps
-            const cachedCategoriesStr = localStorage.getItem('chantCategories')
-            const cachedCategories: CachedChantCategory[] = cachedCategoriesStr ? JSON.parse(cachedCategoriesStr) : []
-            const updatedCache = cachedCategories.filter((cc) => cc.chant_id !== chantId)
-            localStorage.setItem('chantCategories', JSON.stringify(updatedCache))
-            return updated
-        })
     }
 
     // Handle edit chant
@@ -177,12 +282,16 @@ const ChantList: React.FC<ChantListProps> = ({ categories, onCategoriesChange })
     }
 
     const handleSaveEdit = async (chantId: number, text: string, categoryIds: number[], newCategories: string[]) => {
+        const now = Date.now()
+        const updatedAt = new Date().toISOString()
+
+        // Optimistic update - update UI immediately
+        const optimisticChant = chants.find((c) => c.id === chantId)
+        if (optimisticChant) {
+            setChants((prev) => prev.map((c) => (c.id === chantId ? { ...c, text, updated_at: updatedAt } : c)))
+        }
+
         try {
-            // Update chant text
-            const { error: chantError } = await supabase.from('chants').update({ text }).eq('id', chantId)
-
-            if (chantError) throw chantError
-
             // Create new categories and get their IDs
             const newCategoryIds: number[] = []
             for (const categoryName of newCategories) {
@@ -210,7 +319,6 @@ const ChantList: React.FC<ChantListProps> = ({ categories, onCategoriesChange })
 
             // Delete existing category links
             const { error: deleteError } = await supabase.from('chant_categories').delete().eq('chant_id', chantId)
-
             if (deleteError) throw deleteError
 
             // Insert new category links
@@ -218,44 +326,44 @@ const ChantList: React.FC<ChantListProps> = ({ categories, onCategoriesChange })
                 const { error: linkError } = await supabase
                     .from('chant_categories')
                     .insert(allCategoryIds.map((category_id) => ({ chant_id: chantId, category_id })))
-
                 if (linkError) throw linkError
             }
 
-            const now = Date.now()
+            // Update chant text and trigger updated_at update (this will trigger real-time update)
+            const { error: chantError } = await supabase.from('chants').update({ text, updated_at: updatedAt }).eq('id', chantId)
 
-            // Update local state for chants
-            setChants((prevChants) => {
-                const updated = prevChants.map((chant) => (chant.id === chantId ? { ...chant, text } : chant))
-                // Update cache with timestamps
-                const cachedChantsStr = localStorage.getItem('chants')
-                const cachedChants: CachedChant[] = cachedChantsStr ? JSON.parse(cachedChantsStr) : []
-                const updatedCache = cachedChants.map((chant) => (chant.id === chantId ? { ...chant, text, cachedAt: now } : chant))
-                localStorage.setItem('chants', JSON.stringify(updatedCache))
-                return updated
-            })
+            if (chantError) throw chantError
 
-            // Update local state for chant categories
+            // Update local chant categories state optimistically
             const newChantCategories = [
                 ...chantCategories.filter((cc) => cc.chant_id !== chantId),
                 ...allCategoryIds.map((category_id, index) => ({ id: now + index, chant_id: chantId, category_id })),
             ]
-            console.log('Updating chantCategories state to:', newChantCategories)
             setChantCategories(newChantCategories)
 
-            // Update cache with timestamps
-            const cachedCategoriesStr = localStorage.getItem('chantCategories')
-            const cachedCategories: CachedChantCategory[] = cachedCategoriesStr ? JSON.parse(cachedCategoriesStr) : []
-            const updatedCache = [
-                ...cachedCategories.filter((cc) => cc.chant_id !== chantId),
-                ...allCategoryIds.map((category_id, index) => ({ id: now + index, chant_id: chantId, category_id, cachedAt: now })),
+            // Update cache optimistically
+            const cacheStr = localStorage.getItem('chantCache')
+            const cache: CacheMetadata = cacheStr ? JSON.parse(cacheStr) : { lastSync: 0, chants: [], chantCategories: [] }
+
+            // Update chant in cache
+            cache.chants = cache.chants.map((c) => (c.id === chantId ? { ...c, text, updated_at: updatedAt, cachedAt: now } : c))
+
+            // Update categories in cache
+            cache.chantCategories = [
+                ...cache.chantCategories.filter((cc) => cc.chant_id !== chantId),
+                ...allCategoryIds.map((category_id, index) => ({
+                    id: now + index,
+                    chant_id: chantId,
+                    category_id,
+                    cachedAt: now,
+                })),
             ]
-            console.log('Updating localStorage chantCategories to:', updatedCache)
-            localStorage.setItem('chantCategories', JSON.stringify(updatedCache))
+
+            cache.lastSync = now
+            localStorage.setItem('chantCache', JSON.stringify(cache))
 
             // Refresh categories from parent if new ones were created
             if (newCategories.length > 0) {
-                console.log('Refreshing parent categories')
                 onCategoriesChange?.()
             }
 
@@ -265,6 +373,11 @@ const ChantList: React.FC<ChantListProps> = ({ categories, onCategoriesChange })
         } catch (error) {
             console.error('Error updating chant:', error)
             alert('Failed to update chant. Please try again.')
+
+            // Revert optimistic update on error
+            if (optimisticChant) {
+                setChants((prev) => prev.map((c) => (c.id === chantId ? optimisticChant : c)))
+            }
         }
     }
 
@@ -372,7 +485,7 @@ const ChantList: React.FC<ChantListProps> = ({ categories, onCategoriesChange })
                         onToggleFavorite={handleToggleFavorite}
                         onDelete={handleDeleteChant}
                         onEdit={handleEditChant}
-                        showEmptyMessage={true}
+                        showEmptyMessage={!isLoading}
                         isLocked={isLocked}
                         isAdmin={isAdmin}
                     />

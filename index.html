@@ -6,11 +6,30 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=BBH+Sans+Hegarty&display=swap" rel="stylesheet">
     <title>what-the-chant</title>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Optimized lazy font loading
+      function loadFont() {
+        const link = document.createElement('link');
+        link.href = 'https://fonts.googleapis.com/css2?family=BBH+Sans+Hegarty:wght@400;500;600&display=swap';
+        link.rel = 'stylesheet';
+        link.media = 'print';
+        link.onload = function() {
+          this.media = 'all';
+        };
+        document.head.appendChild(link);
+      }
+
+      // Load font after critical resources
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', loadFont);
+      } else {
+        loadFont();
+      }
+    </script>
   </body>
 </html>
