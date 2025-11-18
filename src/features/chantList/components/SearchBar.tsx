@@ -1,6 +1,6 @@
 import React from 'react'
 import { TextField, InputAdornment, IconButton, useTheme, useMediaQuery } from '@mui/material'
-import { Search, Close } from '@mui/icons-material'
+import { SimpleSearch, SimpleClose } from '../../../components/LazyIcons'
 
 interface SearchBarProps {
     searchTerm: string
@@ -24,13 +24,13 @@ const SearchBar: React.FC<SearchBarProps> = ({ searchTerm, onSearchChange, onClo
             InputProps={{
                 startAdornment: (
                     <InputAdornment position="start">
-                        <Search />
+                        <SimpleSearch />
                     </InputAdornment>
                 ),
                 endAdornment: isMobile && onClose && (
                     <InputAdornment position="end">
                         <IconButton onClick={onClose} edge="end">
-                            <Close />
+                            <SimpleClose />
                         </IconButton>
                     </InputAdornment>
                 ),

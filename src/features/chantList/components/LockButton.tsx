@@ -1,6 +1,6 @@
 import React from 'react'
 import { Button, Box } from '@mui/material'
-import { Lock, LockOpen } from '@mui/icons-material'
+import { LazyLock, LazyLockOpen } from '../../../components/LazyIcons'
 
 interface LockButtonProps {
     isLocked: boolean
@@ -13,7 +13,7 @@ const LockButton: React.FC<LockButtonProps> = ({ isLocked, onToggleLock }) => {
             <Button
                 variant={isLocked ? 'contained' : 'outlined'}
                 color={isLocked ? 'error' : 'primary'}
-                startIcon={isLocked ? <Lock /> : <LockOpen />}
+                startIcon={isLocked ? <LazyLock /> : <LazyLockOpen />}
                 onClick={onToggleLock}
                 sx={{
                     textTransform: 'none',

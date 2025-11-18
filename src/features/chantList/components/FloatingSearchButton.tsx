@@ -1,6 +1,6 @@
 import React from 'react'
 import { Fab, useMediaQuery, useTheme } from '@mui/material'
-import { Search } from '@mui/icons-material'
+import { SimpleSearch } from '../../../components/LazyIcons'
 
 interface FloatingSearchButtonProps {
     onClick: () => void
@@ -24,7 +24,7 @@ const FloatingSearchButton: React.FC<FloatingSearchButtonProps> = ({ onClick, sh
                 zIndex: 1000,
             }}
         >
-            <Search />
+            <SimpleSearch />
         </Fab>
     )
 }

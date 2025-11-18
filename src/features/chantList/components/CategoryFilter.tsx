@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { Chip, Box, Button } from '@mui/material'
-import { ExpandMore, ExpandLess } from '@mui/icons-material'
+import { LazyExpandMore, LazyExpandLess } from '../../../components/LazyIcons'
 
 interface Category {
     id: number
@@ -53,7 +53,7 @@ const CategoryFilter: React.FC<CategoryFilterProps> = ({ categories, selectedCat
                     variant="text"
                     size="small"
                     onClick={() => setShowAll(!showAll)}
-                    startIcon={showAll ? <ExpandLess /> : <ExpandMore />}
+                    startIcon={showAll ? <LazyExpandLess /> : <LazyExpandMore />}
                     sx={{ textTransform: 'none', fontSize: '0.8rem' }}
                 >
                     {showAll ? 'Show Less' : `Show All (${categories.length - 4} more)`}

@@ -1,6 +1,6 @@
 import React from 'react'
 import { Paper, Box, Typography, Button, Chip, IconButton } from '@mui/material'
-import { Favorite, FavoriteBorder, Delete, Edit } from '@mui/icons-material'
+import { SimpleFavorite, SimpleFavoriteBorder, LazyDelete, LazyEdit } from '../../../components/LazyIcons'
 
 interface ChantCardProps {
     chant: { id: number; text: string; categories?: string[] }
@@ -51,7 +51,7 @@ const ChantCard: React.FC<ChantCardProps> = ({ chant, isFavorite, onToggleFavori
                                     padding: '4px',
                                 }}
                             >
-                                <Edit fontSize="small" />
+                                <LazyEdit fontSize="small" />
                             </IconButton>
                         )}
                         {isAdmin && onDelete && (
@@ -63,7 +63,7 @@ const ChantCard: React.FC<ChantCardProps> = ({ chant, isFavorite, onToggleFavori
                                     padding: '4px',
                                 }}
                             >
-                                <Delete fontSize="small" />
+                                <LazyDelete fontSize="small" />
                             </IconButton>
                         )}
                         <Button
@@ -76,7 +76,7 @@ const ChantCard: React.FC<ChantCardProps> = ({ chant, isFavorite, onToggleFavori
                                 padding: '4px',
                             }}
                         >
-                            {isFavorite ? <Favorite fontSize="small" /> : <FavoriteBorder fontSize="small" />}
+                            {isFavorite ? <SimpleFavorite fontSize="small" /> : <SimpleFavoriteBorder fontSize="small" />}
                         </Button>
                     </Box>
                 )}
