@@ -4,12 +4,14 @@ import { AccountCircle, Login, Logout } from '@mui/icons-material'
 import { useAuth } from '../../contexts/AuthContext'
 import { AuthDialog } from './AuthDialog'
 import { ChangePasswordDialog } from './ChangePasswordDialog'
+import { DeleteAccountDialog } from './DeleteAccountDialog'
 
 export function UserProfile() {
     const { user, signOut } = useAuth()
     const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
     const [authDialogOpen, setAuthDialogOpen] = useState(false)
     const [changePasswordOpen, setChangePasswordOpen] = useState(false)
+    const [deleteAccountOpen, setDeleteAccountOpen] = useState(false)
 
     const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
         setAnchorEl(event.currentTarget)
@@ -78,6 +80,15 @@ export function UserProfile() {
                 >
                     Change Password
                 </MenuItem>
+                <MenuItem
+                    onClick={() => {
+                        setDeleteAccountOpen(true)
+                        handleMenuClose()
+                    }}
+                    sx={{ color: 'error.main' }}
+                >
+                    Delete Account
+                </MenuItem>
                 <Divider />
                 <MenuItem onClick={handleSignOut}>
                     <Logout fontSize="small" sx={{ mr: 2 }} />
@@ -86,6 +97,7 @@ export function UserProfile() {
             </Menu>
             <AuthDialog open={authDialogOpen} onClose={() => setAuthDialogOpen(false)} />
             <ChangePasswordDialog open={changePasswordOpen} onClose={() => setChangePasswordOpen(false)} />
+            <DeleteAccountDialog open={deleteAccountOpen} onClose={() => setDeleteAccountOpen(false)} />
         </Box>
     )
 }

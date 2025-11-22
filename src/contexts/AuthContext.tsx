@@ -11,6 +11,7 @@ interface AuthContextType {
     signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>
     signUp: (email: string, password: string, metadata?: Record<string, any>) => Promise<{ error: AuthError | null }>
     signOut: () => Promise<void>
+    deleteAccount: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -125,6 +126,23 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         await supabase.auth.signOut()
     }
 
+    const deleteAccount = async () => {
+        if (!user) throw new Error('No user to delete')
+
+        try {
+            // Call RPC function that will verify the user can only delete their own account
+            const { error } = await supabase.rpc('delete_own_account')
+
+            if (error) throw error
+
+            // Sign out after successful deletion
+            await signOut()
+        } catch (error) {
+            console.error('Delete account error:', error)
+            throw new Error('Failed to delete account. Please try again.')
+        }
+    }
+
     const value = useMemo(
         () => ({
             user,
@@ -134,6 +152,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             signIn,
             signUp,
             signOut,
+            deleteAccount,
         }),
         [user, session, loading, isAdmin],
     )
