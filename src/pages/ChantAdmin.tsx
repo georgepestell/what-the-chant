@@ -237,21 +237,17 @@ const ChantAdmin: React.FC<ChantAdminProps> = ({ categories, onCategoriesChanged
         return null
     }
 
-    if (loading) {
-        return (
-            <Box sx={{ p: 3, textAlign: 'center' }}>
-                <Typography>Loading submissions...</Typography>
-            </Box>
-        )
-    }
-
     return (
         <Box sx={{ width: '100%' }}>
             <Typography variant="h5" sx={{ mb: 3, fontFamily: 'BBH Sans Hegarty' }}>
-                Chant Submissions ({submissions.length})
+                Chant Submissions ({loading ? '...' : submissions.length})
             </Typography>
 
-            {submissions.length === 0 ? (
+            {loading ? (
+                <Paper sx={{ p: 3, textAlign: 'center' }}>
+                    <Typography color="text.secondary">Loading submissions...</Typography>
+                </Paper>
+            ) : submissions.length === 0 ? (
                 <Paper sx={{ p: 3, textAlign: 'center' }}>
                     <Typography color="text.secondary">No pending submissions</Typography>
                 </Paper>
