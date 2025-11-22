@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { Button, Menu, MenuItem, Avatar, Box, Typography, IconButton, Divider } from '@mui/material'
-import { AccountCircle, Login, Logout } from '@mui/icons-material'
+import { LazyAccountCircle, LazyLogin, LazyLogout } from '../../components/LazyIcons'
 import { useAuth } from '../../contexts/AuthContext'
 import { AuthDialog } from './AuthDialog'
 import { ChangePasswordDialog } from './ChangePasswordDialog'
@@ -29,7 +29,7 @@ export function UserProfile() {
     if (!user) {
         return (
             <>
-                <Button startIcon={<Login />} variant="outlined" onClick={() => setAuthDialogOpen(true)} sx={{ minWidth: 'auto' }}>
+                <Button startIcon={<LazyLogin />} variant="outlined" onClick={() => setAuthDialogOpen(true)} sx={{ minWidth: 'auto' }}>
                     Sign In
                 </Button>
                 <AuthDialog open={authDialogOpen} onClose={() => setAuthDialogOpen(false)} />
@@ -51,7 +51,7 @@ export function UserProfile() {
                     <Avatar src={user.user_metadata.avatar_url} sx={{ width: 32, height: 32 }} />
                 ) : (
                     <Avatar sx={{ width: 32, height: 32 }}>
-                        <AccountCircle />
+                        <LazyAccountCircle />
                     </Avatar>
                 )}
             </IconButton>
@@ -91,7 +91,7 @@ export function UserProfile() {
                 </MenuItem>
                 <Divider />
                 <MenuItem onClick={handleSignOut}>
-                    <Logout fontSize="small" sx={{ mr: 2 }} />
+                    <LazyLogout fontSize="small" sx={{ mr: 2 }} />
                     Sign Out
                 </MenuItem>
             </Menu>
