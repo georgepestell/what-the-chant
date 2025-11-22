@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { Dialog, DialogTitle, DialogContent, TextField, Button, Box, Typography, Alert, IconButton } from '@mui/material'
-import { Close } from '@mui/icons-material'
+import Close from '@mui/icons-material/Close'
 import { supabase } from '../../lib/supabase'
 
 interface ChangePasswordDialogProps {

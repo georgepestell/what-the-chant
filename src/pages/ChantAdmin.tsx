@@ -13,7 +13,8 @@ import {
     TextField,
     IconButton,
 } from '@mui/material'
-import { Edit, Add } from '@mui/icons-material'
+import Edit from '@mui/icons-material/Edit'
+import Add from '@mui/icons-material/Add'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'

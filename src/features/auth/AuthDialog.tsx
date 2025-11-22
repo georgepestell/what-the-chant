@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Dialog, DialogTitle, DialogContent, TextField, Button, Box, Typography, Alert, IconButton } from '@mui/material'
-import { Close } from '@mui/icons-material'
+import Close from '@mui/icons-material/Close'
 import { useAuth } from '../../contexts/AuthContext'
 
 interface AuthDialogProps {

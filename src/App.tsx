@@ -104,7 +104,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, toggleTheme, isAdmi
             )}
 
             <Container
-                maxWidth="xl"
+                maxWidth="md"
                 sx={{
                     minHeight: '90vh',
                     width: '100%',

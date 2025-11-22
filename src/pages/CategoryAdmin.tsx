@@ -12,7 +12,9 @@ import {
     DialogContent,
     DialogActions,
 } from '@mui/material'
-import { Edit, Delete, Add } from '@mui/icons-material'
+import Add from '@mui/icons-material/Add'
+import Delete from '@mui/icons-material/Delete'
+import Edit from '@mui/icons-material/Edit'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'

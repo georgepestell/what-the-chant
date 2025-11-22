@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Dialog, DialogTitle, DialogContent, DialogActions, TextField, Box, Chip, IconButton, Button, Typography } from '@mui/material'
-import { Add } from '@mui/icons-material'
+import Add from '@mui/icons-material/Add'
 import type { Category } from '../../../App'
 
 interface EditChantDialogProps {

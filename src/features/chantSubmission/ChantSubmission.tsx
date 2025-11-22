@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { Paper, TextField, Button, Typography, Box, Chip, Alert, Snackbar, Divider } from '@mui/material'
-import { Add, Send } from '@mui/icons-material'
+import Add from '@mui/icons-material/Add'
+import Send from '@mui/icons-material/Send'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
 import type { Category } from '../../App'
