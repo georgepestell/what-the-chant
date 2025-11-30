@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { Button, Menu, MenuItem, Avatar, Box, Typography, IconButton, Divider } from '@mui/material'
 import { LazyAccountCircle, LazyLogin, LazyLogout } from '../../components/LazyIcons'
-import { useAuth } from '../../contexts/AuthContext'
+import { useAuth } from '../../hooks/useAuth'
 import { AuthDialog } from './AuthDialog'
 import { ChangePasswordDialog } from './ChangePasswordDialog'
 import { DeleteAccountDialog } from './DeleteAccountDialog'

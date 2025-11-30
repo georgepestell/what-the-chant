@@ -1,7 +1,7 @@
 import React, { lazy, Suspense } from 'react'
 import { Box, Typography, Skeleton, Paper } from '@mui/material'
 import ChantSubmission from '../features/chantSubmission/ChantSubmission'
-import { useAuth } from '../contexts/AuthContext'
+import { useAuth } from '../hooks/useAuth'
 import type { Category } from '../App'
 
 // Lazy load ChantList

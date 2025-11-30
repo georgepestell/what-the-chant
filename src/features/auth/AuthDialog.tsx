@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Dialog, DialogTitle, DialogContent, TextField, Button, Box, Typography, Alert, IconButton } from '@mui/material'
 import Close from '@mui/icons-material/Close'
-import { useAuth } from '../../contexts/AuthContext'
+import { useAuth } from '../../hooks/useAuth'
 
 interface AuthDialogProps {
     open: boolean
@@ -35,7 +35,7 @@ export const AuthDialog: React.FC<AuthDialogProps> = ({ open, onClose }) => {
             } else {
                 setSuccess('Password reset email sent! Check your inbox.')
             }
-        } catch (err) {
+        } catch {
             setError('Failed to send password reset email.')
         } finally {
             setLoading(false)

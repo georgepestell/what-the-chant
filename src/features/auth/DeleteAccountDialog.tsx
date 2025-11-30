@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button, Typography, Box, Alert, IconButton } from '@mui/material'
 import { SimpleClose } from '../../components/LazyIcons'
-import { useAuth } from '../../contexts/AuthContext'
+import { useAuth } from '../../hooks/useAuth'
 
 interface DeleteAccountDialogProps {
     open: boolean

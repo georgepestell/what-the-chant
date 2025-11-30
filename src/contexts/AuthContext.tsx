@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useMemo } from 'react'
+import React, { createContext, useEffect, useState, useMemo, useCallback } from 'react'
 import Cookies from 'js-cookie'
 import type { User, Session, AuthError } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
@@ -9,20 +9,14 @@ interface AuthContextType {
     loading: boolean
     isAdmin: boolean
     signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>
-    signUp: (email: string, password: string, metadata?: Record<string, any>) => Promise<{ error: AuthError | null }>
+    signUp: (email: string, password: string, metadata?: Record<string, unknown>) => Promise<{ error: AuthError | null }>
     signOut: () => Promise<void>
     deleteAccount: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-export const useAuth = () => {
-    const context = useContext(AuthContext)
-    if (context === undefined) {
-        throw new Error('useAuth must be used within an AuthProvider')
-    }
-    return context
-}
+export { AuthContext }
 
 interface AuthProviderProps {
     children: React.ReactNode
@@ -51,7 +45,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 const parsed = JSON.parse(cookieSession)
                 setSession(parsed)
                 setUser(parsed.user ?? null)
-            } catch {}
+            } catch {
+                // Ignore invalid session cookie
+            }
         }
 
         // Get initial session from Supabase
@@ -114,19 +110,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         return () => subscription.unsubscribe()
     }, [])
 
-    const signIn = async (email: string, password: string) => {
+    const signIn = useCallback(async (email: string, password: string) => {
         return await supabase.auth.signInWithPassword({ email, password })
-    }
+    }, [])
 
-    const signUp = async (email: string, password: string, metadata?: Record<string, any>) => {
+    const signUp = useCallback(async (email: string, password: string, metadata?: Record<string, unknown>) => {
         return await supabase.auth.signUp({ email, password, options: metadata ? { data: metadata } : undefined })
-    }
+    }, [])
 
-    const signOut = async () => {
+    const signOut = useCallback(async () => {
         await supabase.auth.signOut()
-    }
+    }, [])
 
-    const deleteAccount = async () => {
+    const deleteAccount = useCallback(async () => {
         if (!user) throw new Error('No user to delete')
 
         try {
@@ -141,7 +137,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             console.error('Delete account error:', error)
             throw new Error('Failed to delete account. Please try again.')
         }
-    }
+    }, [user, signOut])
 
     const value = useMemo(
         () => ({
@@ -154,7 +150,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             signOut,
             deleteAccount,
         }),
-        [user, session, loading, isAdmin],
+        [user, session, loading, isAdmin, signIn, signUp, signOut, deleteAccount],
     )
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

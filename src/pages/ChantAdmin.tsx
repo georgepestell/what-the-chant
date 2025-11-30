@@ -17,7 +17,7 @@ import Edit from '@mui/icons-material/Edit'
 import Add from '@mui/icons-material/Add'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { useAuth } from '../contexts/AuthContext'
+import { useAuth } from '../hooks/useAuth'
 import type { Category } from '../App'
 
 type ChantSubmission = {

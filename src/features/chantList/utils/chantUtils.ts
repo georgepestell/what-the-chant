@@ -1,5 +1,7 @@
+import type { Chant } from '../types'
+
 // Get favorite chants by id
-export const getFavoriteChants = (chants: { id: number; text: string }[], favoriteIds: number[]): { id: number; text: string }[] => {
+export const getFavoriteChants = (chants: Chant[], favoriteIds: number[]): Chant[] => {
     return chants.filter((chant) => favoriteIds.includes(chant.id))
 }
 
@@ -23,7 +25,7 @@ export const fuzzySearch = (text: string, searchTerm: string): boolean => {
     return searchIndex === searchLower.length
 }
 
-export const filterChantsBySearch = (chants: { id: number; text: string }[], searchTerm: string): { id: number; text: string }[] => {
+export const filterChantsBySearch = (chants: Chant[], searchTerm: string): Chant[] => {
     if (!searchTerm.trim()) return chants
     return chants.filter((chant) => fuzzySearch(chant.text, searchTerm))
 }

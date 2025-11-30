@@ -12,7 +12,7 @@ import { useSearch } from './hooks/useSearch'
 import { useLock } from './hooks/useLock'
 import { getFavoriteChants, filterChantsBySearch } from './utils/chantUtils'
 import { supabase } from '../../lib/supabase'
-import { useAuth } from '../../contexts/AuthContext'
+import { useAuth } from '../../hooks/useAuth'
 import type { Category } from '../../App'
 
 // Types for Supabase data
@@ -21,6 +21,11 @@ type ChantCategory = { id: number; chant_id: number; category_id: number }
 type ChantWithCategories = Chant & { categories: string[] }
 type CachedChant = Chant & { cachedAt: number }
 type CachedChantCategory = ChantCategory & { cachedAt: number }
+type RealtimePayload = {
+    eventType: 'INSERT' | 'UPDATE' | 'DELETE'
+    new: Chant
+    old: { id: number }
+}
 
 // Enhanced cache structure with metadata
 interface CacheMetadata {
@@ -68,7 +73,7 @@ const ChantList: React.FC<ChantListProps> = ({ categories, onCategoriesChange })
     // Initial data fetch and real-time setup
     useEffect(() => {
         // Move handleRealtimeChantUpdate inside useEffect to prevent recreating subscription
-        const handleRealtimeChantUpdate = async (payload: any) => {
+        const handleRealtimeChantUpdate = async (payload: RealtimePayload) => {
             const now = Date.now()
             console.log('Real-time chant update:', payload)
 
@@ -194,8 +199,8 @@ const ChantList: React.FC<ChantListProps> = ({ categories, onCategoriesChange })
                 const finalChantCategories = [...filteredValidCategories, ...newCategoriesWithCache]
 
                 // Update state
-                const cleanChants: Chant[] = finalChants.map(({ cachedAt, ...chant }) => chant)
-                const cleanChantCategories: ChantCategory[] = finalChantCategories.map(({ cachedAt, ...cc }) => cc)
+                const cleanChants: Chant[] = finalChants.map(({ cachedAt: _cachedAt, ...chant }) => chant)
+                const cleanChantCategories: ChantCategory[] = finalChantCategories.map(({ cachedAt: _cachedAt, ...cc }) => cc)
 
                 setChants(cleanChants)
                 setChantCategories(cleanChantCategories)
@@ -219,7 +224,9 @@ const ChantList: React.FC<ChantListProps> = ({ categories, onCategoriesChange })
         // Set up real-time subscription
         const chantsSubscription = supabase
             .channel('chants-realtime')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'chants' }, handleRealtimeChantUpdate)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'chants' }, (payload: unknown) => {
+                void handleRealtimeChantUpdate(payload as RealtimePayload)
+            })
             .subscribe()
 
         // Initial fetch
@@ -391,7 +398,7 @@ const ChantList: React.FC<ChantListProps> = ({ categories, onCategoriesChange })
     }
 
     // Filter chants by selected categories
-    const getChantsByCategories = (chants: Chant[], selectedCategories: number[]) => {
+    const getChantsByCategories = (chants: Chant[], selectedCategories: number[]): Chant[] => {
         if (!selectedCategories.length) return chants
         const chantIds = chantCategories.filter((cc) => selectedCategories.includes(cc.category_id)).map((cc) => cc.chant_id)
         const chantIdsSet = new Set(chantIds)
@@ -400,12 +407,13 @@ const ChantList: React.FC<ChantListProps> = ({ categories, onCategoriesChange })
 
     // Filter by category first, then by search term
     const categoryFilteredChants = getChantsByCategories(chants, selectedCategories)
-    const filteredChants = filterChantsBySearch(categoryFilteredChants, searchTerm)
-    const favoriteChantsList = getFavoriteChants(chants, favoriteChants)
+    const categoryFilteredChantsWithCategories = addCategoriesToChants(categoryFilteredChants)
+    const filteredChantsWithCategories = filterChantsBySearch(categoryFilteredChantsWithCategories, searchTerm)
+    const chantsWithCategories = addCategoriesToChants(chants)
+    const favoriteChantsList = getFavoriteChants(chantsWithCategories, favoriteChants)
 
     // Add categories to chants for display
-    const filteredChantsWithCategories = addCategoriesToChants(filteredChants)
-    const favoriteChantsWithCategories = addCategoriesToChants(favoriteChantsList)
+    const favoriteChantsWithCategories = favoriteChantsList
 
     // Show search bar if: not mobile OR (mobile AND showSearchBar is true) OR searchTerm is not empty
     const shouldShowSearchBar = !isMobile || showSearchBar || searchTerm.trim() !== ''
