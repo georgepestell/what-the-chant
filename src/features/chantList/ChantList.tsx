@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react'
-import { Box, Divider, useTheme, useMediaQuery } from '@mui/material'
+import React, { useState } from 'react'
+import { Box, Divider, useTheme, useMediaQuery, CircularProgress, Typography } from '@mui/material'
 import CategoryFilter from './components/CategoryFilter'
 import SearchBar from './components/SearchBar'
 import FloatingSearchButton from './components/FloatingSearchButton'
@@ -10,32 +10,15 @@ import { useCategoryFilter } from './hooks/useCategoryFilter'
 import { useFavorites } from './hooks/useFavorites'
 import { useSearch } from './hooks/useSearch'
 import { useLock } from './hooks/useLock'
-import { getFavoriteChants, filterChantsBySearch } from './utils/chantUtils'
-import { supabase } from '../../lib/supabase'
+import { useChants, useDeleteChant, useUpdateChant } from './hooks/useChantQueries'
+import { getFavoriteChants } from './utils/chantUtils'
 import { useAuth } from '../../hooks/useAuth'
+import { useIntersectionObserver } from '../../hooks/useIntersectionObserver'
 import type { Category } from '../../App'
 
 // Types for Supabase data
 type Chant = { id: number; text: string; updated_at: string }
-type ChantCategory = { id: number; chant_id: number; category_id: number }
 type ChantWithCategories = Chant & { categories: string[] }
-type CachedChant = Chant & { cachedAt: number }
-type CachedChantCategory = ChantCategory & { cachedAt: number }
-type RealtimePayload = {
-    eventType: 'INSERT' | 'UPDATE' | 'DELETE'
-    new: Chant
-    old: { id: number }
-}
-
-// Enhanced cache structure with metadata
-interface CacheMetadata {
-    lastSync: number
-    chants: CachedChant[]
-    chantCategories: CachedChantCategory[]
-}
-
-// Cache expiry time in milliseconds (e.g., 5 minutes)
-const CACHE_EXPIRY_MS = 30 * 60 * 1000
 
 interface ChantListProps {
     categories: Category[]
@@ -45,234 +28,46 @@ interface ChantListProps {
 const ChantList: React.FC<ChantListProps> = ({ categories, onCategoriesChange }) => {
     const { selectedCategories, handleCategorySelect } = useCategoryFilter()
     const { favoriteChants, handleToggleFavorite } = useFavorites()
-    const { searchTerm, showSearchBar, handleSearchChange, toggleSearchBar, hideSearchBar } = useSearch()
+    const { searchTerm, debouncedSearchTerm, showSearchBar, handleSearchChange, toggleSearchBar, hideSearchBar } = useSearch()
     const { isLocked, toggleLock } = useLock()
     const { isAdmin } = useAuth()
 
     const theme = useTheme()
     const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
 
-    // Supabase state
-    const [chants, setChants] = useState<Chant[]>([])
-    const [chantCategories, setChantCategories] = useState<ChantCategory[]>([])
+    // React Query hooks with infinite scroll - pass debounced search and categories for server-side filtering
+    const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useChants(debouncedSearchTerm, selectedCategories)
+    const deleteChantMutation = useDeleteChant()
+    const updateChantMutation = useUpdateChant()
+
+    // Flatten paginated data
+    const chants = data?.pages.flatMap((page) => page.chants) || []
+    const chantCategories = data?.pages.flatMap((page) => page.chantCategories) || []
+
+    // Edit dialog state
     const [editDialogOpen, setEditDialogOpen] = useState(false)
     const [editingChantId, setEditingChantId] = useState<number | null>(null)
-    const [isLoading, setIsLoading] = useState(true)
 
-    // Guard to prevent duplicate fetches (React StrictMode causes double mounting in dev)
-    const fetchGuard = useRef(false)
-
-    // Helper function for cache updates
-    const updateLocalCache = useCallback((cache: CacheMetadata) => {
-        const now = Date.now()
-        const updatedCache = { ...cache, lastSync: now }
-        localStorage.setItem('chantCache', JSON.stringify(updatedCache))
-        return updatedCache
-    }, [])
-
-    // Initial data fetch and real-time setup
-    useEffect(() => {
-        // Move handleRealtimeChantUpdate inside useEffect to prevent recreating subscription
-        const handleRealtimeChantUpdate = async (payload: RealtimePayload) => {
-            const now = Date.now()
-            console.log('Real-time chant update:', payload)
-
-            if (payload.eventType === 'INSERT') {
-                const newChant: Chant = payload.new
-                setChants((prev) => [...prev, newChant])
-
-                // Fetch categories for new chant
-                const { data: newChantCategories } = await supabase.from('chant_categories').select('*').eq('chant_id', newChant.id)
-
-                if (newChantCategories) {
-                    setChantCategories((prev) => [...prev, ...newChantCategories])
-                }
-
-                // Update cache
-                const cacheStr = localStorage.getItem('chantCache')
-                const cache: CacheMetadata = cacheStr ? JSON.parse(cacheStr) : { lastSync: 0, chants: [], chantCategories: [] }
-                cache.chants.push({ ...newChant, cachedAt: now })
-                if (newChantCategories) {
-                    cache.chantCategories.push(...newChantCategories.map((cc) => ({ ...cc, cachedAt: now })))
-                }
-                updateLocalCache(cache)
-            } else if (payload.eventType === 'UPDATE') {
-                const updatedChant: Chant = payload.new
-                setChants((prev) => prev.map((c) => (c.id === updatedChant.id ? updatedChant : c)))
-
-                // Fetch updated categories for this chant
-                const { data: updatedChantCategories } = await supabase.from('chant_categories').select('*').eq('chant_id', updatedChant.id)
-
-                // Update chant categories (remove old ones for this chant, add new ones)
-                setChantCategories((prev) => [...prev.filter((cc) => cc.chant_id !== updatedChant.id), ...(updatedChantCategories || [])])
-
-                // Update cache
-                const cacheStr = localStorage.getItem('chantCache')
-                const cache: CacheMetadata = cacheStr ? JSON.parse(cacheStr) : { lastSync: 0, chants: [], chantCategories: [] }
-                cache.chants = cache.chants.map((c) => (c.id === updatedChant.id ? { ...updatedChant, cachedAt: now } : c))
-                cache.chantCategories = [
-                    ...cache.chantCategories.filter((cc) => cc.chant_id !== updatedChant.id),
-                    ...(updatedChantCategories || []).map((cc) => ({ ...cc, cachedAt: now })),
-                ]
-                updateLocalCache(cache)
-            } else if (payload.eventType === 'DELETE') {
-                const deletedChantId = payload.old.id
-                setChants((prev) => prev.filter((c) => c.id !== deletedChantId))
-                setChantCategories((prev) => prev.filter((cc) => cc.chant_id !== deletedChantId))
-
-                // Update cache
-                const cacheStr = localStorage.getItem('chantCache')
-                const cache: CacheMetadata = cacheStr ? JSON.parse(cacheStr) : { lastSync: 0, chants: [], chantCategories: [] }
-                cache.chants = cache.chants.filter((c) => c.id !== deletedChantId)
-                cache.chantCategories = cache.chantCategories.filter((cc) => cc.chant_id !== deletedChantId)
-                updateLocalCache(cache)
+    // Intersection observer for infinite scroll
+    const loadMoreRef = useIntersectionObserver({
+        onIntersect: () => {
+            if (hasNextPage && !isFetchingNextPage) {
+                fetchNextPage()
             }
-        }
+        },
+        enabled: !isLocked && hasNextPage !== false,
+    })
 
-        const fetchIncrementalData = async () => {
-            // Prevent duplicate fetches (React StrictMode double mounting)
-            if (fetchGuard.current) {
-                console.log('🛑 Fetch already in progress, skipping duplicate call')
-                return
-            }
-
-            fetchGuard.current = true
-            console.log('🚀 Starting initial chant fetch')
-
-            try {
-                const now = Date.now()
-
-                // Load cache metadata
-                const cacheStr = localStorage.getItem('chantCache')
-                const cache: CacheMetadata = cacheStr
-                    ? JSON.parse(cacheStr)
-                    : {
-                          lastSync: 0,
-                          chants: [],
-                          chantCategories: [],
-                      }
-
-                // Filter out expired cached items
-                const validChants = cache.chants.filter((chant) => now - chant.cachedAt < CACHE_EXPIRY_MS)
-                const validChantCategories = cache.chantCategories.filter((cc) => now - cc.cachedAt < CACHE_EXPIRY_MS)
-
-                // Get last sync time for incremental updates
-                const lastSyncDate = new Date(cache.lastSync).toISOString()
-
-                // Fetch only chants updated since last sync
-                const { data: updatedChants } = await supabase
-                    .from('chants')
-                    .select('*')
-                    .gte('updated_at', lastSyncDate)
-                    .order('updated_at', { ascending: true })
-
-                const updatedChantIds = updatedChants?.map((c) => c.id) || []
-
-                // Fetch categories for updated chants
-                let updatedChantCategories: ChantCategory[] = []
-                if (updatedChantIds.length > 0) {
-                    const { data: categoriesData } = await supabase.from('chant_categories').select('*').in('chant_id', updatedChantIds)
-                    updatedChantCategories = categoriesData || []
-                }
-
-                // Merge data: Keep valid cache + add/update new data
-                const chantMap = new Map(validChants.map((c) => [c.id, c]))
-                const updatedChantsWithCache: CachedChant[] = (updatedChants || []).map((chant) => ({
-                    ...chant,
-                    cachedAt: now,
-                }))
-
-                // Update map with new/updated chants
-                updatedChantsWithCache.forEach((chant) => {
-                    chantMap.set(chant.id, chant)
-                })
-
-                // Remove categories for updated chants and add new ones
-                const updatedChantIdSet = new Set(updatedChantIds)
-                const filteredValidCategories = validChantCategories.filter((cc) => !updatedChantIdSet.has(cc.chant_id))
-                const newCategoriesWithCache: CachedChantCategory[] = updatedChantCategories.map((cc) => ({
-                    ...cc,
-                    cachedAt: now,
-                }))
-
-                const finalChants = Array.from(chantMap.values())
-                const finalChantCategories = [...filteredValidCategories, ...newCategoriesWithCache]
-
-                // Update state
-                const cleanChants: Chant[] = finalChants.map(({ cachedAt: _cachedAt, ...chant }) => chant)
-                const cleanChantCategories: ChantCategory[] = finalChantCategories.map(({ cachedAt: _cachedAt, ...cc }) => cc)
-
-                setChants(cleanChants)
-                setChantCategories(cleanChantCategories)
-
-                // Update cache
-                const updatedCache: CacheMetadata = {
-                    lastSync: now,
-                    chants: finalChants,
-                    chantCategories: finalChantCategories,
-                }
-                localStorage.setItem('chantCache', JSON.stringify(updatedCache))
-            } catch (error) {
-                console.error('Error fetching chants:', error)
-            } finally {
-                setIsLoading(false)
-                fetchGuard.current = false
-                console.log('✅ Initial chant fetch completed')
-            }
-        }
-
-        // Set up real-time subscription
-        const chantsSubscription = supabase
-            .channel('chants-realtime')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'chants' }, (payload: unknown) => {
-                void handleRealtimeChantUpdate(payload as RealtimePayload)
-            })
-            .subscribe()
-
-        // Initial fetch
-        fetchIncrementalData()
-
-        // Cleanup subscription on unmount
-        return () => {
-            supabase.removeChannel(chantsSubscription)
-        }
-    }, [updateLocalCache])
-
-    // Handle delete chant with optimistic updates
+    // Handle delete chant
     const handleDeleteChant = async (chantId: number) => {
         if (!confirm('Are you sure you want to delete this chant? This action cannot be undone.')) {
             return
         }
 
-        // Store original data for potential rollback
-        const originalChant = chants.find((c) => c.id === chantId)
-        const originalCategories = chantCategories.filter((cc) => cc.chant_id === chantId)
-
-        // Optimistic update - remove from UI immediately
-        setChants((prev) => prev.filter((c) => c.id !== chantId))
-        setChantCategories((prev) => prev.filter((cc) => cc.chant_id !== chantId))
-
         try {
-            const { error } = await supabase.from('chants').delete().eq('id', chantId)
-            if (error) throw error
-
-            // Update cache
-            const cacheStr = localStorage.getItem('chantCache')
-            const cache: CacheMetadata = cacheStr ? JSON.parse(cacheStr) : { lastSync: 0, chants: [], chantCategories: [] }
-
-            cache.chants = cache.chants.filter((c) => c.id !== chantId)
-            cache.chantCategories = cache.chantCategories.filter((cc) => cc.chant_id !== chantId)
-            cache.lastSync = Date.now()
-
-            localStorage.setItem('chantCache', JSON.stringify(cache))
+            await deleteChantMutation.mutateAsync(chantId)
         } catch (error) {
             console.error('Error deleting chant:', error)
-
-            // Rollback optimistic update on error
-            if (originalChant) {
-                setChants((prev) => [...prev, originalChant])
-                setChantCategories((prev) => [...prev, ...originalCategories])
-            }
             alert('Failed to delete chant. Please try again.')
         }
     }
@@ -289,85 +84,13 @@ const ChantList: React.FC<ChantListProps> = ({ categories, onCategoriesChange })
     }
 
     const handleSaveEdit = async (chantId: number, text: string, categoryIds: number[], newCategories: string[]) => {
-        const now = Date.now()
-        const updatedAt = new Date().toISOString()
-
-        // Optimistic update - update UI immediately
-        const optimisticChant = chants.find((c) => c.id === chantId)
-        if (optimisticChant) {
-            setChants((prev) => prev.map((c) => (c.id === chantId ? { ...c, text, updated_at: updatedAt } : c)))
-        }
-
         try {
-            // Create new categories and get their IDs
-            const newCategoryIds: number[] = []
-            for (const categoryName of newCategories) {
-                const lowerCaseName = categoryName.toLowerCase()
-
-                // Check if category already exists
-                const { data: existingCategory } = await supabase.from('categories').select('id').eq('name', lowerCaseName).single()
-
-                if (existingCategory) {
-                    // Use existing category
-                    newCategoryIds.push(existingCategory.id)
-                } else {
-                    // Create new category
-                    const { data, error } = await supabase.from('categories').insert({ name: lowerCaseName }).select('id').single()
-
-                    if (error) throw error
-                    if (data) {
-                        newCategoryIds.push(data.id)
-                    }
-                }
-            }
-
-            // Combine existing and new category IDs
-            const allCategoryIds = [...categoryIds, ...newCategoryIds]
-
-            // Delete existing category links
-            const { error: deleteError } = await supabase.from('chant_categories').delete().eq('chant_id', chantId)
-            if (deleteError) throw deleteError
-
-            // Insert new category links
-            if (allCategoryIds.length > 0) {
-                const { error: linkError } = await supabase
-                    .from('chant_categories')
-                    .insert(allCategoryIds.map((category_id) => ({ chant_id: chantId, category_id })))
-                if (linkError) throw linkError
-            }
-
-            // Update chant text and trigger updated_at update (this will trigger real-time update)
-            const { error: chantError } = await supabase.from('chants').update({ text, updated_at: updatedAt }).eq('id', chantId)
-
-            if (chantError) throw chantError
-
-            // Update local chant categories state optimistically
-            const newChantCategories = [
-                ...chantCategories.filter((cc) => cc.chant_id !== chantId),
-                ...allCategoryIds.map((category_id, index) => ({ id: now + index, chant_id: chantId, category_id })),
-            ]
-            setChantCategories(newChantCategories)
-
-            // Update cache optimistically
-            const cacheStr = localStorage.getItem('chantCache')
-            const cache: CacheMetadata = cacheStr ? JSON.parse(cacheStr) : { lastSync: 0, chants: [], chantCategories: [] }
-
-            // Update chant in cache
-            cache.chants = cache.chants.map((c) => (c.id === chantId ? { ...c, text, updated_at: updatedAt, cachedAt: now } : c))
-
-            // Update categories in cache
-            cache.chantCategories = [
-                ...cache.chantCategories.filter((cc) => cc.chant_id !== chantId),
-                ...allCategoryIds.map((category_id, index) => ({
-                    id: now + index,
-                    chant_id: chantId,
-                    category_id,
-                    cachedAt: now,
-                })),
-            ]
-
-            cache.lastSync = now
-            localStorage.setItem('chantCache', JSON.stringify(cache))
+            await updateChantMutation.mutateAsync({
+                chantId,
+                text,
+                categoryIds,
+                newCategories,
+            })
 
             // Refresh categories from parent if new ones were created
             if (newCategories.length > 0) {
@@ -380,11 +103,6 @@ const ChantList: React.FC<ChantListProps> = ({ categories, onCategoriesChange })
         } catch (error) {
             console.error('Error updating chant:', error)
             alert('Failed to update chant. Please try again.')
-
-            // Revert optimistic update on error
-            if (optimisticChant) {
-                setChants((prev) => prev.map((c) => (c.id === chantId ? optimisticChant : c)))
-            }
         }
     }
 
@@ -397,29 +115,18 @@ const ChantList: React.FC<ChantListProps> = ({ categories, onCategoriesChange })
         })
     }
 
-    // Filter chants by selected categories
-    const getChantsByCategories = (chants: Chant[], selectedCategories: number[]): Chant[] => {
-        if (!selectedCategories.length) return chants
-        const chantIds = chantCategories.filter((cc) => selectedCategories.includes(cc.category_id)).map((cc) => cc.chant_id)
-        const chantIdsSet = new Set(chantIds)
-        return chants.filter((c) => chantIdsSet.has(c.id))
-    }
-
-    // Filter by category first, then by search term
-    const categoryFilteredChants = getChantsByCategories(chants, selectedCategories)
-    const categoryFilteredChantsWithCategories = addCategoriesToChants(categoryFilteredChants)
-    const filteredChantsWithCategories = filterChantsBySearch(categoryFilteredChantsWithCategories, searchTerm)
+    // Chants are already filtered by server (search + categories), just add category names
     const chantsWithCategories = addCategoriesToChants(chants)
     const favoriteChantsList = getFavoriteChants(chantsWithCategories, favoriteChants)
-
-    // Add categories to chants for display
-    const favoriteChantsWithCategories = favoriteChantsList
 
     // Show search bar if: not mobile OR (mobile AND showSearchBar is true) OR searchTerm is not empty
     const shouldShowSearchBar = !isMobile || showSearchBar || searchTerm.trim() !== ''
 
     // Show floating button on mobile when search bar is hidden and no search term
     const shouldShowFloatingButton = isMobile && !showSearchBar && searchTerm.trim() === ''
+
+    // Check if we're waiting for debounced search
+    const isSearchPending = searchTerm !== debouncedSearchTerm
 
     return (
         <Box
@@ -434,7 +141,7 @@ const ChantList: React.FC<ChantListProps> = ({ categories, onCategoriesChange })
                 <>
                     <ChantSection
                         title="Favourites"
-                        chants={favoriteChantsWithCategories}
+                        chants={favoriteChantsList}
                         favoriteChants={favoriteChants}
                         onToggleFavorite={handleToggleFavorite}
                         onDelete={handleDeleteChant}
@@ -451,12 +158,28 @@ const ChantList: React.FC<ChantListProps> = ({ categories, onCategoriesChange })
 
             {/* Search Bar - Above categories on desktop, conditional on mobile */}
             {!isLocked && shouldShowSearchBar && (
-                <SearchBar
-                    searchTerm={searchTerm}
-                    onSearchChange={handleSearchChange}
-                    onClose={isMobile ? hideSearchBar : undefined}
-                    placeholder="Search chants within selected categories..."
-                />
+                <Box sx={{ position: 'relative' }}>
+                    <SearchBar
+                        searchTerm={searchTerm}
+                        onSearchChange={handleSearchChange}
+                        onClose={isMobile ? hideSearchBar : undefined}
+                        placeholder="Search chants within selected categories..."
+                    />
+                    {isSearchPending && (
+                        <Box
+                            sx={{
+                                position: 'absolute',
+                                right: 48,
+                                top: '50%',
+                                transform: 'translateY(-50%)',
+                                display: 'flex',
+                                alignItems: 'center',
+                            }}
+                        >
+                            <CircularProgress size={20} />
+                        </Box>
+                    )}
+                </Box>
             )}
 
             {/* All Chants Section - Hidden when locked */}
@@ -478,25 +201,63 @@ const ChantList: React.FC<ChantListProps> = ({ categories, onCategoriesChange })
                         />
                         {/* Sticky search bar when there's a search term */}
                         {searchTerm.trim() !== '' && !shouldShowSearchBar && (
-                            <SearchBar
-                                searchTerm={searchTerm}
-                                onSearchChange={handleSearchChange}
-                                onClose={isMobile ? hideSearchBar : undefined}
-                                placeholder="Search chants within selected categories..."
-                            />
+                            <Box sx={{ position: 'relative' }}>
+                                <SearchBar
+                                    searchTerm={searchTerm}
+                                    onSearchChange={handleSearchChange}
+                                    onClose={isMobile ? hideSearchBar : undefined}
+                                    placeholder="Search chants within selected categories..."
+                                />
+                                {isSearchPending && (
+                                    <Box
+                                        sx={{
+                                            position: 'absolute',
+                                            right: 48,
+                                            top: '50%',
+                                            transform: 'translateY(-50%)',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                        }}
+                                    >
+                                        <CircularProgress size={20} />
+                                    </Box>
+                                )}
+                            </Box>
                         )}
                     </Box>
                     <ChantSection
                         title="All Chants"
-                        chants={filteredChantsWithCategories}
+                        chants={chantsWithCategories}
                         favoriteChants={favoriteChants}
                         onToggleFavorite={handleToggleFavorite}
                         onDelete={handleDeleteChant}
                         onEdit={handleEditChant}
-                        showEmptyMessage={!isLoading}
+                        showEmptyMessage={!isLoading && !isSearchPending}
                         isLocked={isLocked}
                         isAdmin={isAdmin}
                     />
+
+                    {/* Infinite scroll loader */}
+                    {!isLocked && hasNextPage && (
+                        <Box
+                            ref={loadMoreRef}
+                            sx={{
+                                display: 'flex',
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                                padding: 3,
+                            }}
+                        >
+                            {isFetchingNextPage && (
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                    <CircularProgress size={24} />
+                                    <Typography variant="body2" color="text.secondary">
+                                        Loading more chants...
+                                    </Typography>
+                                </Box>
+                            )}
+                        </Box>
+                    )}
 
                     {/* Floating Search Button for Mobile */}
                     <FloatingSearchButton onClick={toggleSearchBar} show={shouldShowFloatingButton} />
