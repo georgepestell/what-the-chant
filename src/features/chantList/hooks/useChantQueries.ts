@@ -12,10 +12,35 @@ interface ChantsPageData {
     chantCategories: ChantCategory[]
     nextCursor: number | null
     hasMore: boolean
+    lastSync?: string
 }
 
 const QUERY_KEY_BASE = 'chants'
 const PAGE_SIZE = 50
+
+// Check for incremental updates based on last sync time
+const checkForUpdates = async (lastSync?: string) => {
+    if (!lastSync) return null
+
+    const { data: updatedChants, error } = await supabase
+        .from('chants')
+        .select('*')
+        .gt('updated_at', lastSync)
+        .order('updated_at', { ascending: false })
+
+    if (error) throw error
+
+    if (!updatedChants || updatedChants.length === 0) return null
+
+    const chantIds = updatedChants.map((c: Chant) => c.id)
+    const { data: categories } = await supabase.from('chant_categories').select('*').in('chant_id', chantIds)
+
+    return {
+        chants: updatedChants,
+        chantCategories: categories || [],
+        lastSync: new Date().toISOString(),
+    }
+}
 
 // Fetch chants with pagination (for both browsing and searching)
 const fetchChantsPage = async ({
@@ -77,6 +102,7 @@ const fetchChantsPage = async ({
         chantCategories,
         nextCursor,
         hasMore,
+        lastSync: new Date().toISOString(),
     }
 }
 
@@ -89,11 +115,87 @@ export const useChants = (searchTerm: string = '', categoryIds: number[] = []) =
 
     const query = useInfiniteQuery({
         queryKey,
-        queryFn: ({ pageParam = 0 }) => fetchChantsPage({ pageParam, searchTerm, categoryIds }),
+        queryFn: async ({ pageParam = 0 }) => {
+            // Normal pagination fetch for search/filter or subsequent pages
+            if (pageParam !== 0 || searchTerm || categoryIds.length > 0) {
+                return fetchChantsPage({ pageParam, searchTerm, categoryIds })
+            }
+
+            // For first page without search/filter, check cache first
+            const cachedData = queryClient.getQueryData<{ pages: ChantsPageData[] }>(queryKey)
+
+            // If we have cached data, check for incremental updates
+            if (cachedData?.pages?.[0]?.lastSync) {
+                const lastSync = cachedData.pages[0]?.lastSync
+                const updates = await checkForUpdates(lastSync)
+
+                // If we have updates, merge them with cached data
+                if (updates && updates.chants.length > 0) {
+                    const existingChants = cachedData.pages.flatMap((p) => p.chants)
+                    const existingCategories = cachedData.pages.flatMap((p) => p.chantCategories)
+
+                    // Create a map of existing chants by ID
+                    const chantMap = new Map(existingChants.map((c) => [c.id, c]))
+
+                    // Update or add new chants
+                    updates.chants.forEach((chant) => {
+                        chantMap.set(chant.id, chant)
+                    })
+
+                    // Update categories - remove old ones for updated chants, add new
+                    const updatedChantIds = new Set(updates.chants.map((c) => c.id))
+                    const filteredCategories = existingCategories.filter((cc) => !updatedChantIds.has(cc.chant_id))
+
+                    const allChants = Array.from(chantMap.values()).sort(
+                        (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
+                    )
+                    const allCategories = [...filteredCategories, ...updates.chantCategories]
+
+                    // Rebuild pages with updated data
+                    const newPages: ChantsPageData[] = []
+                    for (let i = 0; i < allChants.length; i += PAGE_SIZE) {
+                        const pageChants = allChants.slice(i, i + PAGE_SIZE)
+                        const pageChantIds = new Set(pageChants.map((c) => c.id))
+                        const pageCategories = allCategories.filter((cc) => pageChantIds.has(cc.chant_id))
+
+                        newPages.push({
+                            chants: pageChants,
+                            chantCategories: pageCategories,
+                            nextCursor: i + PAGE_SIZE < allChants.length ? i + PAGE_SIZE : null,
+                            hasMore: i + PAGE_SIZE < allChants.length,
+                            lastSync: updates.lastSync,
+                        })
+                    }
+
+                    // Update the cache with merged data
+                    queryClient.setQueryData(queryKey, {
+                        pages: newPages,
+                        pageParams: newPages.map((_, idx) => idx * PAGE_SIZE),
+                    })
+
+                    // Return the first page
+                    return (
+                        newPages[0] || {
+                            chants: [],
+                            chantCategories: [],
+                            nextCursor: null,
+                            hasMore: false,
+                            lastSync: updates.lastSync,
+                        }
+                    )
+                }
+
+                // No updates, return cached first page without making any network call
+                return cachedData.pages[0]
+            }
+
+            // No cache, do initial fetch
+            return fetchChantsPage({ pageParam, searchTerm, categoryIds })
+        },
         initialPageParam: 0,
         getNextPageParam: (lastPage) => lastPage.nextCursor,
-        staleTime: 1000 * 60 * 5, // 5 minutes
-        gcTime: 1000 * 60 * 60 * 24, // 24 hours
+        staleTime: Infinity, // Never consider data stale - we handle updates manually
+        gcTime: 1000 * 60 * 60 * 24, // Keep in cache for 24 hours
     })
 
     // Set up realtime subscription
